@@ -1,5 +1,9 @@
 # Datasets
 
+We would either go about training models on DNA (which fewer people have done) or protein sequences.
+
+
+### DNA data
 DNA:
     RefSeq (all species)
         For RefSeq, this also means that the genome that the sequence comes from can be used as annotation.
@@ -11,13 +15,7 @@ DNA:
         Another way of thinking about these sequences is that they belong in a phylogeny of species,
         but they also exist in a phylogeny of sequences which have tasks.
 
-Human Variation Data:
-    100K genomes
-    1K genomes
-    dbSNP (only human, but still relevant to many)
-    clinVar, etc.
-
-
+#### DNA annotations
 Annotations (DNA):
     RefSeq has annotations in GFF format for only about 150 well-characterized genomes
     Goals could be to generalize genome annotation from only these genomes
@@ -27,8 +25,18 @@ Annotations (DNA):
     Additionally, DNA from coding sequences can be annotated with information from the Protein sequences.
 
 
+### Variation Data
+This is useful for both DNA and protein problems, as it increases the number of relevant sequences.
+    100K genomes
+    1K genomes
+    dbSNP (only human, but still relevant to many)
+    clinVar, etc.
+
+
+
+### Protein data
 Annotations (protein):
-    Families
+    UniProt100, UniProt90, BFD
     Protein domain decompositon (PFam)
     GO annotation (Gene Ontology)
     See https://www.biorxiv.org/content/10.1101/2020.07.12.199554v2.full.pdf
