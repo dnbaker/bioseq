@@ -10,3 +10,6 @@ There are 3 items exposed:
 • onehot_encode, which takes a Tokenizer, some options, and a sequence or batch of sequences
 
 • f_encode, which takes more options. This results in a temporary Tokenizer, so it might be faster to use the prior.
+
+
+In the future, we plan to extend this to dataset abstractions, subsampling, and model training. Currently, it only encodes sequences in one-hot form.
