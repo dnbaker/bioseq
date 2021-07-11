@@ -83,4 +83,4 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
 
 
 
-__all__ = ["onehot_encode", "native", "onehot", "bonehot"]
+__all__ = ["onehot_encode", "native", "f_encode"]
