@@ -1,8 +1,8 @@
 # bioseq
 
-Performs one-hot encoding for DNA or Protein sequences with C++ code, optionally converting to pytorch and moving to device.
+A C++/Python package performing fast one-hot encoding for DNA or Protein sequences with C++ code, optionally converting to pytorch and moving to device.
 
-Offers DNA, 20-letter amino acid, and a variety of compressed protein and DNA alphabets, and optionally is parallelized for conversion.
+Offers 4-letter DNA, 20-letter amino acid, and a variety of other compressed protein and DNA alphabets, and optionally is parallelized.
 
 There are 3 items exposed:
 • Tokenizer, which can then tokenize
