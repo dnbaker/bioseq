@@ -23,7 +23,10 @@ def onehot_encode(tokenizer, seqbatch, padlen=-1, destchar='B', batch_first=Fals
     if isinstance(seqbatch, str) or isinstance(seqbatch, bytes):
         res = tokenizer.onehot_encode(seqbatch, padlen, destchar)
     else:
-        res = tokenizer.batch_onehot_encode(seqbatch, padlen, destchar, batch_first=batch_first)
+        res = tokenizer.batch_onehot_encode(seqbatch, padlen, destchar)
+        if batch_first:
+            from einops import rearrange
+            res = rearrange(res, 'seq batch base -> batch seq base')
     if to_pytorch:
         from torch import from_numpy
         res = from_numpy(res)

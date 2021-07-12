@@ -126,8 +126,9 @@ struct Tokenizer {
         }
     }
     template<typename T>
-    py::array_t<T> tokenize(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false) const {
+    py::array_t<T> tokenize(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1) const {
         if(padlen <= 0) throw std::invalid_argument("batch tokenize requires padlen is provded.");
+        if(nthreads <= 0) nthreads = 1;
         const py::ssize_t nc = full_alphabet_size();
         py::ssize_t nr = padlen + include_bos_ + include_eos_;
         const auto mul = nc * nr;
@@ -157,13 +158,18 @@ struct Tokenizer {
             }
             ++nitems;
         }
+        if(batch_first) {
+            std::fprintf(stderr, "Batch first seems to be buggy. Instead, using Einops' rearrange to correct the shape.");
+            batch_first = false;
+        }
         py::array_t<T> ret(batch_first ? std::vector<py::ssize_t>({nitems, nr, nc}): std::vector<py::ssize_t>({nr, nitems, nc}));
         py::buffer_info bi = ret.request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr * nc);
         T *ptr = (T *)bi.ptr, *offp = ptr;
         if(batch_first) {
+#if 0
 #ifdef _OPENMP
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(nthreads)
 #endif
             for(size_t i = 0; i < strs.size(); ++i) {
                 const auto &seq(strs[i]);
@@ -179,10 +185,11 @@ struct Tokenizer {
                         tp[pad()] = 1;
                 }
             }
+#endif
         } else {
             const auto nrc = nr * nc;
 #ifdef _OPENMP
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(nthreads)
 #endif
             for(size_t i = 0; i < strs.size(); ++i) {
                 const auto &seq(strs[i]);
