@@ -21,9 +21,9 @@ def onehot_encode(tokenizer, seqbatch, padlen=-1, destchar='B', batch_first=Fals
                 cause this function to copy to device after encoding.
     """
     if isinstance(seqbatch, str) or isinstance(seqbatch, bytes):
-        res = tokenizer.onehot(seqbatch, padlen, destchar)
+        res = tokenizer.onehot_encode(seqbatch, padlen, destchar)
     else:
-        res = tokenizer.bonehot(seqbatch, padlen, destchar, batch_first=batch_first)
+        res = tokenizer.batch_onehot_encode(seqbatch, padlen, destchar, batch_first=batch_first)
     if to_pytorch:
         from torch import from_numpy
         res = from_numpy(res)
@@ -83,4 +83,4 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
 
 
 
-__all__ = ["onehot_encode", "native", "f_encode"]
+__all__ = ["onehot_encode", "native", "f_encode", "Tokenizer"]

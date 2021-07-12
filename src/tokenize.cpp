@@ -4,7 +4,7 @@
 void init_tokenize(py::module &m) {
     py::class_<Tokenizer>(m, "Tokenizer")
     .def(py::init<std::string, bool, bool, bool>(), py::arg("key"), py::arg("eos") = false, py::arg("bos") = false, py::arg("padchar") = true)
-    .def("onehot", [](const Tokenizer &tok, py::str s, py::ssize_t padlen, std::string dt) -> py::object {
+    .def("onehot_encode", [](const Tokenizer &tok, py::str s, py::ssize_t padlen, std::string dt) -> py::object {
         py::ssize_t size;
         const char *ptr = PyUnicode_AsUTF8AndSize(s.ptr(), &size);
         if(dt[0] == 'B' || dt[0] == 'b')
@@ -19,7 +19,7 @@ void init_tokenize(py::module &m) {
             return tok.tokenize<double>(ptr, size, padlen);
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "f")
-    .def("onehot", [](const Tokenizer &tok, py::bytes bs, py::ssize_t padlen, std::string dt) -> py::object {
+    .def("onehot_encode", [](const Tokenizer &tok, py::bytes bs, py::ssize_t padlen, std::string dt) -> py::object {
         py::ssize_t size;
         char *ptr;
         PyBytes_AsStringAndSize(bs.ptr(), &ptr, &size);
@@ -36,7 +36,7 @@ void init_tokenize(py::module &m) {
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
     // batched one-hot encoding
-    .def("bonehot", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, bool batch_first) -> py::object {
+    .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, bool batch_first) -> py::object {
         switch(std::tolower(dt[0])) {
 #define C(x, t) case x: return tok.tokenize<t>(seq, padlen, batch_first)
             default:  C('b', uint8_t);
