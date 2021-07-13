@@ -44,6 +44,15 @@ Annotations (protein):
     structure, contact, homology, fluorescence, stability, all of which are collected easily by TAPE
         https://github.com/songlab-cal/tape
 
+    PPI (protein-protein interaction) databases
+        https://github.com/GreiffLab/manuscript_ab_epitope_interaction
+        3did
+        https://openwetware.org/wiki/Protein-protein_interaction_databases
+        https://www.nature.com/articles/s41598-018-30999-1
+        https://downloads.thebiogrid.org/BioGRID/Release-Archive/BIOGRID-4.4.199/
+
+        STRING
+
 
 # Jobs to attempt
 
