@@ -131,7 +131,6 @@ struct Tokenizer {
         if(nthreads <= 0) nthreads = 1;
         const py::ssize_t nc = full_alphabet_size();
         py::ssize_t nr = padlen + include_bos_ + include_eos_;
-        const auto mul = nc * nr;
         std::vector<std::pair<const char *, size_t>> strs;
         py::ssize_t nitems = 0;
         for(auto item: items) {
@@ -166,44 +165,22 @@ struct Tokenizer {
         py::buffer_info bi = ret.request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr * nc);
         T *ptr = (T *)bi.ptr, *offp = ptr;
-        if(batch_first) {
-#if 0
+        const auto nrc = nr * nc;
 #ifdef _OPENMP
-    #pragma omp parallel for num_threads(nthreads)
+#pragma omp parallel for num_threads(nthreads)
 #endif
-            for(size_t i = 0; i < strs.size(); ++i) {
-                const auto &seq(strs[i]);
-                auto tp = &offp[i * mul];
-                if(include_bos_)
-                    tp[bos()] = 1, tp += nc;
-                for(size_t j = 0; j < seq.second; ++j)
-                    tp[ca_->translate(seq.first[j])] = 1, tp += nc;
-                if(include_eos_)
-                    tp[eos()] = 1, tp += nc;
-                if(zero_onehot_pad_) {
-                    for(auto ep = &offp[(i + 1) * mul];tp < ep;tp += nc)
-                        tp[pad()] = 1;
-                }
-            }
-#endif
-        } else {
-            const auto nrc = nr * nc;
-#ifdef _OPENMP
-    #pragma omp parallel for num_threads(nthreads)
-#endif
-            for(size_t i = 0; i < strs.size(); ++i) {
-                const auto &seq(strs[i]);
-                if(include_bos_)
-                    ptr[i * nc + bos()] = 1;
-                for(size_t j = 0; j < seq.second; ++j)
-                    ptr[(include_bos_ + j) * nrc + i * nc + ca_->translate(seq.first[i])] = 1;
-                if(include_eos_)
-                    ptr[(include_bos_ + seq.second) * nrc + i * nc + eos()] = 1;
-                if(zero_onehot_pad_)
-                    for(py::ssize_t k = seq.second + include_bos_ + include_eos_;
-                        k < padlen;
-                        ptr[k++ * nrc + i * nc + pad()] = 1);
-            }
+        for(size_t i = 0; i < strs.size(); ++i) {
+            const auto &seq(strs[i]);
+            if(include_bos_)
+                ptr[i * nc + bos()] = 1;
+            for(size_t j = 0; j < seq.second; ++j)
+                ptr[(include_bos_ + j) * nrc + i * nc + ca_->translate(seq.first[i])] = 1;
+            if(include_eos_)
+                ptr[(include_bos_ + seq.second) * nrc + i * nc + eos()] = 1;
+            if(zero_onehot_pad_)
+                for(py::ssize_t k = seq.second + include_bos_ + include_eos_;
+                    k < padlen;
+                    ptr[k++ * nrc + i * nc + pad()] = 1);
         }
         return ret;
     }

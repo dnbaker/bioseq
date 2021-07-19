@@ -1,5 +1,7 @@
 import cbioseq
 from cbioseq import *
+from .tax import get_taxid
+import bioseq.tax as tax
 
 
 def onehot_encode(tokenizer, seqbatch, padlen=-1, destchar='B', batch_first=False, to_pytorch=False, device=None):
@@ -86,4 +88,4 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
 
 
 
-__all__ = ["onehot_encode", "native", "f_encode", "Tokenizer"]
+__all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax"]

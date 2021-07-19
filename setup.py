@@ -38,7 +38,7 @@ def cpp_flag(compiler):
     The newer version is prefered over c++11 (when it is available).
     """
 
-    for flag in ("-std=c++%s" % x for x in (20, 17, 14, 11, "03")):
+    for flag in ("-std=c++%s" % x for x in ("2a", 17, 14, 11, "03")):
         if has_flag(compiler, flag): return flag
 
     raise RuntimeError('Unsupported compiler -- at least C++11 support '
@@ -92,7 +92,7 @@ class BuildExt(build_ext):
 if __name__ == "__main__":
     __version__ = "0.1"
     include_dirs = [get_pybind_include(), get_pybind_include(True), "./"]
-    ext_modules = [Extension("cbioseq", ["bioseq.cpp", "tokenize.cpp", "omp.cpp"], include_dirs=include_dirs, language='c++')]
+    ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/tokenize.cpp", "src/omp.cpp"], include_dirs=include_dirs, language='c++')]
     setup(
         name='bioseq',
         version=__version__,
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         description='A python module for tokenizing biological sequences',
         long_description='',
         ext_modules=ext_modules,
-        install_requires=['pybind11', 'numpy>=0.19', 'scipy', 'einops'],
+        install_requires=['pybind11', 'numpy>=0.19', 'einops'],
         setup_requires=['pybind11'],
         cmdclass={'build_ext': BuildExt},
         zip_safe=False,
