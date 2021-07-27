@@ -90,7 +90,7 @@ class BuildExt(build_ext):
         build_ext.build_extensions(self)
 
 if __name__ == "__main__":
-    __version__ = "0.1"
+    __version__ = "0.1.1"
     include_dirs = [get_pybind_include(), get_pybind_include(True), "./"]
     ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/tokenize.cpp", "src/omp.cpp"], include_dirs=include_dirs, language='c++')]
     setup(
