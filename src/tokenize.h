@@ -164,7 +164,7 @@ struct Tokenizer {
         py::array_t<T> ret(batch_first ? std::vector<py::ssize_t>({nitems, nr, nc}): std::vector<py::ssize_t>({nr, nitems, nc}));
         py::buffer_info bi = ret.request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr * nc);
-        T *ptr = (T *)bi.ptr, *offp = ptr;
+        T *ptr = (T *)bi.ptr;
         const auto nrc = nr * nc;
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(nthreads)
