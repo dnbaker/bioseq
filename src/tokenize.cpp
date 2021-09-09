@@ -3,7 +3,7 @@
 
 void init_tokenize(py::module &m) {
     py::class_<Tokenizer>(m, "Tokenizer")
-    .def(py::init<std::string, bool, bool, bool>(), py::arg("key"), py::arg("eos") = false, py::arg("bos") = false, py::arg("padchar") = true)
+    .def(py::init<std::string, bool, bool, bool>(), py::arg("key"), py::arg("eos") = false, py::arg("bos") = false, py::arg("padchar") = false)
     .def("onehot_encode", [](const Tokenizer &tok, py::str s, py::ssize_t padlen, std::string dt) -> py::object {
         py::ssize_t size;
         const char *ptr = PyUnicode_AsUTF8AndSize(s.ptr(), &size);

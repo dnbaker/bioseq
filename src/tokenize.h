@@ -30,11 +30,11 @@ struct Tokenizer {
             throw std::runtime_error(std::string("Invalid tokenizer type; select one from") + options);
         }
         ca_ = it->second;
-#ifndef NDEBUG
+#if 0
         for(size_t i = 0; i < 256; ++i) {
-            std::fprintf(stderr, "using %d/%c->%d/%c\n", int(i), char(i), ca_->lut[i], ca_->lut[i]);
+            if(ca_->lut[i] != int8_t(-1))
+                std::fprintf(stderr, "using %d/%c->%d/%c\n", int(i), char(i), ca_->lut[i], ca_->lut[i]);
         }
-        std::fprintf(stderr, "Tokenizer has %zu commas/%zu chars\n", ca_->nc, ca_->nc + 1);
 #endif
     }
     template<typename T>
@@ -54,22 +54,27 @@ struct Tokenizer {
         if(include_bos_)
             ptr[bos()]  = 1, offp += nc;
         for(py::ssize_t i = 0; i < seqsz; ++i) {
-#ifndef NDEBUG
-            std::fprintf(stderr, "char %zu is %d/%c", i, seq[i], seq[i]);
-#endif
             //, translated to %d\n", i, seq[i], seq[i], ca_->translate(seq[i]));
-            offp[ca_->translate(seq[i])] = 1, offp += nc;
+            assert(std::strlen(seq) > i);
+            auto offset = ca_->translate(seq[i]);
+            assert(offset < full_alphabet_size());
+            assert(offset >= 0u);
+            offp[offset] = 1, offp += nc;
         }
         if(include_eos_)
             offp[eos()] = 1, offp += nc;
         if(zero_onehot_pad_) {
-            for(auto pos = (offp - ptr) / nc;pos < padlen; ++pos)
+            for(auto pos = (offp - ptr) / nc;pos < padlen; ++pos) {
                 ptr[pos * nc + pad()] = 1;
+            }
         }
         return ret;
     }
     template<typename T>
     py::array_t<T> tokenize(const std::vector<std::string> &seqs, py::ssize_t padlen=0, bool batch_first = false) const {
+        if(seqs.empty()) {
+            throw std::invalid_argument(std::string("Cannot tokenize an empty set of sequences; len: ") + std::to_string(seqs.size()));
+        }
         const size_t mseqlen = std::accumulate(seqs.begin(), seqs.end(), size_t(0), [](auto x, const auto &y) {return std::max(x, y.size());});
         if(padlen > 0) {
             if(mseqlen > padlen) throw std::runtime_error("padlen is too short to accommodate sequence batch\n");
@@ -86,9 +91,11 @@ struct Tokenizer {
         } else {
             ret.resize({nr, batchsize, nc});
         }
+        const size_t total_nregs = nr * batchsize * nc;
         py::buffer_info bi = ret.request();
         T *ptr = (T *)bi.ptr, *offp = ptr;
-        if(batch_first) {
+        if(0) {
+#if 0
 #ifdef _OPENMP
     #pragma omp parallel for
 #endif
@@ -106,18 +113,22 @@ struct Tokenizer {
                         tp[pad()] = 1;
                 }
             }
-        } else {
-#ifdef _OPENMP
-    #pragma omp parallel for
 #endif
+        } else {
             for(size_t i = 0; i < seqs.size(); ++i) {
                 const auto &seq(seqs[i]);
                 if(include_bos_)
                     ptr[i * nc + bos()] = 1;
-                for(size_t j = 0; j < seq.size(); ++j)
+                for(size_t j = 0; j < seq.size(); ++j) {
+                    auto tr = ca_->translate(seq[i]);
+                    assert(tr >= 0);
+                    assert(tr < full_alphabet_size());
+                    assert(ptr + (include_bos_ + j) * nr * nc + i * nc + ca_->translate(seq[i]) < ptr + total_nregs);
                     ptr[(include_bos_ + j) * nr * nc + i * nc + ca_->translate(seq[i])] = 1;
-                if(include_eos_)
+                }
+                if(include_eos_) {
                     ptr[(include_bos_ + seq.size()) * nr * nc + i * nc + eos()] = 1;
+                }
                 if(zero_onehot_pad_) {
                     for(py::ssize_t myi = seq.size() + include_bos_ + include_eos_; myi < padlen; ++myi)
                         ptr[myi * nr * nc + i * nc + pad()] = 1;
@@ -158,29 +169,41 @@ struct Tokenizer {
             ++nitems;
         }
         if(batch_first) {
-            std::fprintf(stderr, "Batch first seems to be buggy. Instead, using Einops' rearrange to correct the shape.");
-            batch_first = false;
+            throw std::invalid_argument("Batch first is disabled. Instead, using Einops' rearrange to correct the shape.");
         }
-        py::array_t<T> ret(batch_first ? std::vector<py::ssize_t>({nitems, nr, nc}): std::vector<py::ssize_t>({nr, nitems, nc}));
+        py::array_t<T> ret(std::vector<py::ssize_t>({nr, nitems, nc})); // T B C
+        const auto nrc = nitems * nc;
+#define access(seqind, batchind, charind) \
+        assert((seqind) * nrc + (batchind) * nc + (charind) < nr * nitems * nc);\
+        ptr[(seqind) * nrc + (batchind) * nc + (charind)]
         py::buffer_info bi = ret.request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr * nc);
         T *ptr = (T *)bi.ptr;
-        const auto nrc = nr * nc;
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(nthreads)
+    #pragma omp parallel for num_threads(nthreads)
 #endif
         for(size_t i = 0; i < strs.size(); ++i) {
             const auto &seq(strs[i]);
-            if(include_bos_)
-                ptr[i * nc + bos()] = 1;
-            for(size_t j = 0; j < seq.second; ++j)
-                ptr[(include_bos_ + j) * nrc + i * nc + ca_->translate(seq.first[i])] = 1;
-            if(include_eos_)
-                ptr[(include_bos_ + seq.second) * nrc + i * nc + eos()] = 1;
-            if(zero_onehot_pad_)
-                for(py::ssize_t k = seq.second + include_bos_ + include_eos_;
-                    k < padlen;
-                    ptr[k++ * nrc + i * nc + pad()] = 1);
+            if(include_bos_) {
+                access(0, i, bos()) = 1;
+            }
+            for(size_t j = 0; j < seq.second; ++j) {
+                auto tr = ca_->translate(seq.first[j]);
+                access((include_bos_ + j), i, tr) = 1;
+            }
+            if(include_eos_) {
+                access((include_bos_ + seq.second), i, eos()) = 1;
+            }
+            if(seq.second + include_bos_ + include_eos_ > padlen) {
+                auto tl = seq.second + include_bos_ + include_eos_;
+                throw std::invalid_argument(std::string("seq len + bos + eos > padlen: ") + std::to_string(tl) + ", vs padlen " + std::to_string(padlen));
+            }
+            if(zero_onehot_pad_) {
+                for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
+                {
+                    access(k++, i, pad()) = 1;
+                }
+            }
         }
         return ret;
     }

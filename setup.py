@@ -44,7 +44,7 @@ def cpp_flag(compiler):
     raise RuntimeError('Unsupported compiler -- at least C++11 support '
                        'is needed!')
 
-extra_compile_args = ['-march=native', '-DNDEBUG',
+extra_compile_args = ['-march=native', "-DNDEBUG",
                       '-Wno-char-subscripts', '-Wno-unused-function', '-Wno-ignored-qualifiers',
                       '-Wno-strict-aliasing', '-Wno-ignored-attributes', '-fno-wrapv',
                       '-Wall', '-Wextra', '-Wformat',
