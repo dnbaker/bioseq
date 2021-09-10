@@ -4,6 +4,7 @@
 #include <map>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <climits>
 #include <type_traits>
 #include <cassert>
@@ -119,6 +120,65 @@ static constexpr const Alphabet SEB8("SE-B(8)","AST,C,DHN,EKQR,FWY,G,ILMV,P", fa
 static constexpr const Alphabet SEB6("SE-B(6)","AST,CP,DHNEKQR,FWY,G,ILMV", false, "PU:KC");
 
 static constexpr const Alphabet DAYHOFF("Dayhoff","AGPST,C,DENQ,FWY,HKR,ILMV", false, "PU:KC");
+
+namespace amine_traits {
+static constexpr const  std::string_view alcoholic_bases("oST");
+static constexpr const  std::string_view hydrophobic_bases("hACFGHIKLMRTVWY");
+static constexpr const  std::string_view polar_bases("pCDEHKNQRST");
+static constexpr const  std::string_view charged_bases("cDEHKR");
+static constexpr const  std::string_view positive_bases("+HKR");
+static constexpr const  std::string_view negative_bases("-DE");
+static constexpr const  std::string_view small_bases("sAGSCDNPTV");
+static constexpr const  std::string_view tiny_bases("uAGS");
+static constexpr const  std::string_view aromatic_bases("aFHWY");
+static constexpr const  std::string_view turnlike_bases("tACDEGHKNQRST");
+
+static constexpr bool is_alcoholic(char c) {
+    switch(c) case 'o': case  'S': case 'T': return true;
+    return false;
+}
+static constexpr bool is_hydrophobic(char c) {
+    switch(c) {
+        case 'h': case 'A': case 'C': case 'F': case 'G': case 'H': case 'I': case 'K': case 'L': case 'M': case 'R': case 'T': case 'V': case 'W': case 'Y':
+            return true;
+    }
+    return false;
+}
+static constexpr bool is_polar(char c) {
+    switch(c) case 'p': case 'C': case 'D': case 'E': case 'H': case 'K': case 'N': case 'Q': case 'R': case 'S': case 'T': return true;
+    return false;
+}
+static constexpr bool is_negative(char c) {
+    switch(c) case '-': case 'D': case 'E': return true;
+    return false;
+}
+static constexpr bool is_positive(char c) {
+    switch(c) case '+': case 'H': case 'K': case 'R': return true;
+    return false;
+}
+static constexpr bool is_charged(char c) {
+    switch(c) case 'c': case 'D': case 'E': case 'H': case 'K': case 'R': return true;
+    return false;
+}
+static constexpr bool is_small(char c) {
+    switch(c) case 's': case 'A': case 'G': case 'S': case 'C': case 'D': case 'N': case 'P': case 'T': case 'V': return true;
+    return false;
+}
+static constexpr bool is_tiny(char c) {
+    switch(c) case 'u': case 'A': case 'G': case 'S': return true;
+    return false;
+}
+static constexpr bool is_aromatic(char c) {
+    switch(c) case 'a': case 'F': case 'H': case 'W': case 'Y': return true;
+    return false;
+}
+static constexpr bool is_turnlike(char c) {
+    switch(c) case 't': case 'A':  case 'C': case 'D': case 'E': case 'G': case 'H': case 'K': case 'N': case 'Q': case 'R': case 'S': case 'T':
+        return true;
+    return false;
+}
+
+} // namespace amine_traits
 
 
 // DNA alphabets
