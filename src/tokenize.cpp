@@ -36,9 +36,9 @@ void init_tokenize(py::module &m) {
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
     // batched one-hot encoding
-    .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt) -> py::object {
+    .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, int nthreads) -> py::object {
         switch(std::tolower(dt[0])) {
-#define C(x, t) case x: return tok.tokenize<t>(seq, padlen, false)
+#define C(x, t) case x: return tok.tokenize<t>(seq, padlen, false, nthreads)
             default:  C('b', uint8_t);
                       C('h', uint16_t);
                       C('i', uint32_t);
@@ -48,10 +48,10 @@ void init_tokenize(py::module &m) {
 #undef C
         }
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
-    }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B")
-    .def("batch_tokenize", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt) -> py::object {
+    }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B",  py::arg("nthreads") = 1)
+    .def("batch_tokenize", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, bool batch_first, int nthreads) -> py::object {
         switch(std::tolower(dt[0])) {
-#define C(x, t) case x: return tok.transencode<t>(seq, padlen, false)
+#define C(x, t) case x: return tok.transencode<t>(seq, padlen, batch_first, nthreads)
             default:  C('b', uint8_t);
                       C('h', uint16_t);
                       C('i', uint32_t);
@@ -61,5 +61,5 @@ void init_tokenize(py::module &m) {
 #undef C
         }
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
-    }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B");
+    }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B", py::arg("batch_first")=false, py::arg("nthreads") = 1);
 }

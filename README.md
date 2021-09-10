@@ -15,5 +15,9 @@ These functions do one-hot encoding.
 
 Tokenizer can tokenize (`batch_tokenize`), which creates array of tokens, (char by default),
 or it can one-hot encode (`batch_onehot_encode`), which takes the tokens one-step further into one-hot encoding.
+Both of these `Tokenizer::batch_*` functions can be parallelized by providing `nthreads={int}`.
+
+tokenizing uses seq-first ordering by default as well, but this can be changed with `batch_first=True`.
+one-hot encoding uses seq-first ordering (not batch-first). It does not support `batch_first`.
 
 Both of these are ~30x as fast as using bytes.translate + np.frombuffer + np.vstack + `torch.from_numpy`.
