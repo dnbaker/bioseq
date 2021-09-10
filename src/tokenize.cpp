@@ -48,5 +48,18 @@ void init_tokenize(py::module &m) {
 #undef C
         }
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
+    }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B")
+    .def("batch_tokenize", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt) -> py::object {
+        switch(std::tolower(dt[0])) {
+#define C(x, t) case x: return tok.transencode<t>(seq, padlen, false)
+            default:  C('b', uint8_t);
+                      C('h', uint16_t);
+                      C('i', uint32_t);
+            case 'l': C('q', uint64_t);
+            C('f', float);
+            C('d', double);
+#undef C
+        }
+        throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
     }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B");
 }

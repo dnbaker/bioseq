@@ -11,7 +11,9 @@ There are 3 items exposed:
 
 • f_encode, which takes more options. This results in a temporary Tokenizer, so it might be faster to use the prior.
 
+These functions do one-hot encoding.
 
-It's simple and small now, only encoding in one-hot form.
+Tokenizer can tokenize (`batch_tokenize`), which creates array of tokens, (char by default),
+or it can one-hot encode (`batch_onehot_encode`), which takes the tokens one-step further into one-hot encoding.
 
-In the future, we plan to extend this to dataset abstractions, subsampling, and model training.
+Both of these are ~30x as fast as using bytes.translate + np.frombuffer + np.vstack + `torch.from_numpy`.

@@ -207,4 +207,86 @@ struct Tokenizer {
         }
         return ret;
     }
+    template<typename T>
+    py::object transencode(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1) const {
+        if(padlen <= 0) throw std::invalid_argument("batch tokenize requires padlen is provded.");
+        if(nthreads <= 0) nthreads = 1;
+        py::ssize_t nr = padlen + include_bos_ + include_eos_;
+        std::vector<std::pair<const char *, size_t>> strs;
+        py::ssize_t nitems = 0;
+        for(auto item: items) {
+            py::ssize_t size;
+            if(py::isinstance<py::str>(item)) {
+                const char *s = PyUnicode_AsUTF8AndSize(item.ptr(), &size);
+                strs.push_back({s, size});
+            } else if(py::isinstance<py::bytes>(item)) {
+                char *s;
+                if(PyBytes_AsStringAndSize(item.ptr(), &s, &size))
+                    throw std::invalid_argument("item is not a bytes object; this should never happen.");
+                strs.push_back({s, size});
+            } else if(py::isinstance<py::array>(item)) {
+                auto inf = py::cast<py::array>(item).request();
+                switch(inf.format.front()) {
+                    case 'b': case 'B': {
+                        strs.push_back({(const char *)inf.ptr, size_t(inf.size)});
+                    }
+                    default: goto invalid;
+                }
+            } else {
+                invalid:
+                throw std::invalid_argument("item was none of string, bytes, or numpy array of 8-bit integers. ");
+            }
+            ++nitems;
+        }
+        py::object ret = py::none();
+        if(batch_first) {
+            ret = py::array_t<T>(std::vector<py::ssize_t>({nitems, nr})); // B T
+        } else {
+            ret = py::array_t<T>(std::vector<py::ssize_t>({nr, nitems})); // T B
+        }
+        py::buffer_info bi = ret.cast<py::array_t<T>>().request();
+        std::memset(bi.ptr, 0, sizeof(T) * nitems * nr);
+        T *ptr = (T *)bi.ptr;
+#define assign_bf(seqind, batchind, charind) \
+        do {\
+            ptr[batchind * nitems + seqind] = charind;\
+        } while(0)
+#define assign_tf(seqind, batchind, charind) \
+        do {\
+            ptr[seqind * nr + batchind] = charind;\
+        } while(0)
+#define assign(seqind, batchind, charind) \
+        do {\
+            if(charind >= 0) {\
+                if(batch_first) assign_bf(seqind, batchind, charind);\
+                else assign_tf(seqind, batchind, charind);\
+            }\
+        } while(0)
+
+#ifdef _OPENMP
+    #pragma omp parallel for num_threads(nthreads)
+#endif
+        for(size_t i = 0; i < strs.size(); ++i) {
+            const auto &seq(strs[i]);
+            if(__builtin_expect(static_cast<py::ssize_t>(seq.second + include_bos_ + include_eos_) > padlen, 0)) {
+                auto tl = seq.second + include_bos_ + include_eos_;
+                throw std::runtime_error(std::string("seq len + bos + eos > padlen: ") + std::to_string(tl) + ", vs padlen " + std::to_string(padlen));
+            }
+            if(include_bos_) {
+                assign(0, i, bos());
+            }
+            for(size_t j = 0; j < seq.second; ++j) {
+                auto tr = ca_->translate(seq.first[j]);
+                assign((include_bos_ + j), i, tr);
+            }
+            if(include_eos_) {
+                assign((include_bos_ + seq.second), i, eos());
+            }
+            for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
+            {
+                assign(k++, i, pad());
+            }
+        }
+        return ret;
+    }
 };
