@@ -194,7 +194,7 @@ struct Tokenizer {
             if(include_eos_) {
                 access((include_bos_ + seq.second), i, eos()) = 1;
             }
-            if(seq.second + include_bos_ + include_eos_ > padlen) {
+            if(static_cast<py::ssize_t>(seq.second + include_bos_ + include_eos_) > padlen) {
                 auto tl = seq.second + include_bos_ + include_eos_;
                 throw std::invalid_argument(std::string("seq len + bos + eos > padlen: ") + std::to_string(tl) + ", vs padlen " + std::to_string(padlen));
             }
