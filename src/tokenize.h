@@ -173,7 +173,7 @@ struct Tokenizer {
         }
         py::array_t<T> ret(std::vector<py::ssize_t>({nr, nitems, nc})); // T B C
         const auto nrc = nitems * nc;
-#define access(seqind, batchind, charind) \
+#define __access(seqind, batchind, charind) \
         assert((seqind) * nrc + (batchind) * nc + (charind) < nr * nitems * nc);\
         ptr[(seqind) * nrc + (batchind) * nc + (charind)]
         py::buffer_info bi = ret.request();
@@ -185,14 +185,14 @@ struct Tokenizer {
         for(size_t i = 0; i < strs.size(); ++i) {
             const auto &seq(strs[i]);
             if(include_bos_) {
-                access(0, i, bos()) = 1;
+                __access(0, i, bos()) = 1;
             }
             for(size_t j = 0; j < seq.second; ++j) {
                 auto tr = ca_->translate(seq.first[j]);
-                access((include_bos_ + j), i, tr) = 1;
+                __access((include_bos_ + j), i, tr) = 1;
             }
             if(include_eos_) {
-                access((include_bos_ + seq.second), i, eos()) = 1;
+                __access((include_bos_ + seq.second), i, eos()) = 1;
             }
             if(static_cast<py::ssize_t>(seq.second + include_bos_ + include_eos_) > padlen) {
                 auto tl = seq.second + include_bos_ + include_eos_;
@@ -201,7 +201,7 @@ struct Tokenizer {
             if(zero_onehot_pad_) {
                 for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
                 {
-                    access(k++, i, pad()) = 1;
+                    __access(k++, i, pad()) = 1;
                 }
             }
         }
@@ -246,20 +246,26 @@ struct Tokenizer {
         }
         py::buffer_info bi = ret.cast<py::array_t<T>>().request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr);
+        const size_t padl = nr;
         T *ptr = (T *)bi.ptr;
-#define assign_bf(seqind, batchind, charind) \
+#define __assign_bf(seqind, batchind, charind) \
         do {\
-            ptr[batchind * nitems + seqind] = charind;\
+            assert(seqind + batchind * padl < nitems * padl);\
+            ptr[batchind * padl + seqind] = charind;\
         } while(0)
-#define assign_tf(seqind, batchind, charind) \
+#define __assign_tf(seqind, batchind, charind) \
         do {\
-            ptr[seqind * nr + batchind] = charind;\
+            assert(seqind * nitems + batchind < nitems * padl);\
+            ptr[seqind * nitems + batchind] = charind;\
         } while(0)
-#define assign(seqind, batchind, charind) \
+#define __assign(seqind, batchind, charind) \
         do {\
             if(charind >= 0) {\
-                if(batch_first) assign_bf(seqind, batchind, charind);\
-                else assign_tf(seqind, batchind, charind);\
+                if(batch_first) {\
+                    __assign_bf(seqind, batchind, charind);\
+                } else {\
+                    __assign_tf(seqind, batchind, charind);\
+                }\
             }\
         } while(0)
 
@@ -273,20 +279,24 @@ struct Tokenizer {
                 throw std::runtime_error(std::string("seq len + bos + eos > padlen: ") + std::to_string(tl) + ", vs padlen " + std::to_string(padlen));
             }
             if(include_bos_) {
-                assign(0, i, bos());
+                __assign(0, i, bos());
             }
             for(size_t j = 0; j < seq.second; ++j) {
                 auto tr = ca_->translate(seq.first[j]);
-                assign((include_bos_ + j), i, tr);
+                __assign((include_bos_ + j), i, tr);
             }
             if(include_eos_) {
-                assign((include_bos_ + seq.second), i, eos());
+                __assign((include_bos_ + seq.second), i, eos());
             }
             for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
             {
-                assign(k++, i, pad());
+                __assign(k++, i, pad());
             }
         }
         return ret;
+#undef __assign_tf
+#undef __assign_bf
+#undef __assign
+#undef __access
     }
 };
