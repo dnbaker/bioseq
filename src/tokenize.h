@@ -33,12 +33,6 @@ struct Tokenizer {
             throw std::runtime_error(std::string("Invalid tokenizer type; select one from") + options);
         }
         ca_ = it->second;
-#if 0
-        for(size_t i = 0; i < 256; ++i) {
-            if(ca_->lut[i] != int8_t(-1))
-                std::fprintf(stderr, "using %d/%c->%d/%c\n", int(i), char(i), ca_->lut[i], ca_->lut[i]);
-        }
-#endif
     }
     template<typename T>
     py::array_t<T> tokenize(const std::string &seq, py::ssize_t padlen=0) const {

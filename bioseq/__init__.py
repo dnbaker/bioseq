@@ -109,7 +109,9 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
     return onehot_encode(tokenizer, seqbatch, padlen=padlen, destchar=destchar,
                          batch_first=batch_first, to_pytorch=to_pytorch, device=device)
 
+
 keys = ("SEB6", "SEB8", "SEB10", "SEV10", "MURPHY", "LIA10", "LIB10", "SEB6", "DAYHOFF", "DNA4", "DNA", "DNA5", "KETO", "PURPYR", "BYTES")
+bkeys = keys + tuple(map(str.lower, keys))
 
 
 DNATokenizer = cbioseq.Tokenizer("DNA")
@@ -130,11 +132,25 @@ default_tokenizers = {"DNA": DNATokenizer, "AMINO20": AmineTokenizer,
                       "LIA": LIATokenizer,
                       "LIB10": LIBTokenizer,
                       "LIB": LIBTokenizer}
-bkeys = keys + tuple(map(str.lower, keys))
-bos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=False, padchar=False) for k in bkeys}
-eos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=False) for k in bkeys}
-beos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=True, padchar=False) for k in bkeys}
 pbeos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=True, padchar=True) for k in bkeys}
+beos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=True, padchar=False) for k in bkeys}
+pbos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=False, padchar=True) for k in bkeys}
+bos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=False, padchar=False) for k in bkeys}
+peos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=True) for k in bkeys}
+eos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=False) for k in bkeys}
+pos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=False, padchar=True) for k in bkeys}
+
+
+def get_tokenizer_dict(bos, eos, padchar):
+    if bos:
+        if eos:
+            return pbeos_tokenizers if padchar else beos_tokenizers
+        else:
+            return pbos_tokenizers if padchar else bos_tokenizers
+    elif eos:
+        return peos_tokenizers if padchar else eos_tokenizers
+    else:
+        return pos_tokenizers if padchar else default_tokenizers
 
 
 def make_embedding(tok, embdim, maxnorm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False, _weight=None):
@@ -149,6 +165,7 @@ def make_embedding(tok, embdim, maxnorm=None, norm_type=2.0, scale_grad_by_freq=
             sparse = False: Whether to use sparse embeddings. False by default.
             _weight = None: If providing tensors from pre-trained, set them here. Must match the tokenizer's number of tokens and the embedding dimension.
     """
+    assert norm_type >= 1., f"{norm_type} is not >= 1., so it is not a norm."
     import torch.nn as nn
     return nn.Embedding(tok.alphabet_size(),
                         embdim,
@@ -156,7 +173,14 @@ def make_embedding(tok, embdim, maxnorm=None, norm_type=2.0, scale_grad_by_freq=
                         scale_grad_by_freq=scale_grad_by_freq, sparse=sparse, _weight=_weight)
 
 
+def torchify(arr):
+    '''Simply wrapper for torch.from_numpy, converts numpy array to pytorch.
+    '''
+    from torch import from_numpy
+    return from_numpy(arr)
+
+
 __all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax",
            "make_embedding",
-           "bos_tokenizers", "eos_tokenizers", "beos_tokenizers", "pbeos_tokenizers",
-           "DNATokenizer", "AmineTokenizer", "Reduced6Tokenizer", "Reduced8Tokenizer", "Reduced10Tokenizer", "Reduced14Tokenizer", "DayhoffTokenizer", "LIATokenizer", "LIBTokenizer",]
+           "bos_tokenizers", "eos_tokenizers", "beos_tokenizers", "pbeos_tokenizers", "peos_tokenizers", "pbos_tokenizers", "pos_tokenizers", "default_tokenizers", "get_tokenizer_dict",
+           "DNATokenizer", "AmineTokenizer", "Reduced6Tokenizer", "Reduced8Tokenizer", "Reduced10Tokenizer", "Reduced14Tokenizer", "DayhoffTokenizer", "LIATokenizer", "LIBTokenizer"]
