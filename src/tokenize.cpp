@@ -62,5 +62,11 @@ void init_tokenize(py::module &m) {
         }
         throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
     }, py::arg("batch"), py::arg("padlen") = -1, py::arg("destchar") = "B", py::arg("batch_first")=false, py::arg("nthreads") = 1)
-    .def("alphabet_size", &Tokenizer::full_alphabet_size);
+    .def("alphabet_size", &Tokenizer::full_alphabet_size)
+    .def("bos", &Tokenizer::bos)
+    .def("eos", &Tokenizer::eos)
+    .def("pad", &Tokenizer::pad)
+    .def("is_padded", &Tokenizer::is_padded)
+    .def("includes_bos", &Tokenizer::includes_bos)
+    .def("includes_eos", &Tokenizer::includes_eos);
 }

@@ -3,6 +3,29 @@ from cbioseq import *
 from .tax import get_taxid
 import bioseq.tax as tax
 
+"""
+bioseq provides tokenizers and utilities for generating embeddings
+See the list of existing tokenizers:
+    DNATokenizer
+    AmineTokenizer
+    Reduced6Tokenizer
+    Reduced8Tokenizer
+    Reduced10Tokenizer
+    Reduced14Tokenizer
+    DayhoffTokenizer
+    LIATokenizer
+    LIBTokenizer
+These are pre-made, with no bos, eos, or padding characters.
+Use the keys from this set:
+    ("SEB6", "SEB8", "SEB10", "SEV10", "MURPHY", "LIA10", "LIB10", "SEB6", "DAYHOFF", "DNA4", "DNA", "DNA5", "KETO", "PURPYR", "BYTES")
+to index specific tokenizers into the premade tokenizer dictionaries.
+
+There are 'bos_tokenizers', where BOS is an additional character, but there is no padding or EOS char.
+There are 'eos_tokenizers', where EOS is an additional character, but there is no padding or BOS char.
+There are 'beos_tokenizers', where EOS and BOS are an additional character, but there is no padding.
+There are 'pbeos_tokenizers', where EOS, BOS, and padchar are all characters. This means there are 3 additional alphabet characters.
+"""
+
 
 def onehot_encode(tokenizer, seqbatch, padlen=-1, destchar='B', batch_first=False, to_pytorch=False, device=None):
     """
@@ -86,6 +109,54 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
     return onehot_encode(tokenizer, seqbatch, padlen=padlen, destchar=destchar,
                          batch_first=batch_first, to_pytorch=to_pytorch, device=device)
 
+keys = ("SEB6", "SEB8", "SEB10", "SEV10", "MURPHY", "LIA10", "LIB10", "SEB6", "DAYHOFF", "DNA4", "DNA", "DNA5", "KETO", "PURPYR", "BYTES")
 
 
-__all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax"]
+DNATokenizer = cbioseq.Tokenizer("DNA")
+AmineTokenizer = cbioseq.Tokenizer("AMINO20")
+Reduced6Tokenizer = cbioseq.Tokenizer("SEB6")
+Reduced8Tokenizer = cbioseq.Tokenizer("SEB8")
+Reduced10Tokenizer = cbioseq.Tokenizer("SEB10")
+Reduced14Tokenizer = cbioseq.Tokenizer("SEB14")
+DayhoffTokenizer = cbioseq.Tokenizer("DAYHOFF")
+LIATokenizer = cbioseq.Tokenizer("LIA10")
+LIBTokenizer = cbioseq.Tokenizer("LIB10")
+default_tokenizers = {"DNA": DNATokenizer, "AMINO20": AmineTokenizer,
+                      "SEB6": Reduced6Tokenizer,
+                      "SEB8": Reduced8Tokenizer,
+                      "SEB10": Reduced10Tokenizer,
+                      "SEB14": Reduced14Tokenizer,
+                      "LIA10": LIATokenizer,
+                      "LIA": LIATokenizer,
+                      "LIB10": LIBTokenizer,
+                      "LIB": LIBTokenizer}
+bkeys = keys + tuple(map(str.lower, keys))
+bos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=False, padchar=False) for k in bkeys}
+eos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=False) for k in bkeys}
+beos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=True, padchar=False) for k in bkeys}
+pbeos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=True, padchar=True) for k in bkeys}
+
+
+def make_embedding(tok, embdim, maxnorm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False, _weight=None):
+    """
+        Args:
+            tok: bioseq.Tokenizer
+            embdim: Int, dimension for embeddings
+        KWArgs:
+            maxnorm = None: maximum norm for embeddings. If not None, embeddings will be scaled by the p-norm corresponding to norm_type
+            norm_type = 2.: Sets p for the Lp norm. Must be See torch.nn.Embedding.
+            scale_grad_by_freq = False: Whether to scale gradient by the count frequencies. See torch.nn.Embedding.
+            sparse = False: Whether to use sparse embeddings. False by default.
+            _weight = None: If providing tensors from pre-trained, set them here. Must match the tokenizer's number of tokens and the embedding dimension.
+    """
+    import torch.nn as nn
+    return nn.Embedding(tok.alphabet_size(),
+                        embdim,
+                        padding_idx=tok.pad() if tok.is_padded() else None,
+                        scale_grad_by_freq=scale_grad_by_freq, sparse=sparse, _weight=_weight)
+
+
+__all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax",
+           "make_embedding",
+           "bos_tokenizers", "eos_tokenizers", "beos_tokenizers", "pbeos_tokenizers",
+           "DNATokenizer", "AmineTokenizer", "Reduced6Tokenizer", "Reduced8Tokenizer", "Reduced10Tokenizer", "Reduced14Tokenizer", "DayhoffTokenizer", "LIATokenizer", "LIBTokenizer",]

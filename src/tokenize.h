@@ -18,6 +18,9 @@ struct Tokenizer {
     int bos() const {if(!include_bos_) return -1; return ca_->nchars();}
     int eos() const {if(!include_eos_) return -1; return bos() + 1;}
     int pad() const {return eos() + 1;}
+    bool is_padded() const {return zero_onehot_pad_;}
+    bool includes_bos() const {return include_bos_;}
+    bool includes_eos() const {return include_eos_;}
     // Always included: padding
     Tokenizer(const Alphabet &ca, bool eos=false, bool bos=false, bool zero_onehot_pad=false): ca_(&ca), include_eos_(eos), include_bos_(bos), zero_onehot_pad_(zero_onehot_pad) {
     }
