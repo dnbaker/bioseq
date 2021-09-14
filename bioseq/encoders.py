@@ -1,17 +1,157 @@
+import sys
+import random
+
+
 import bioseq
+import einops
 import torch
 import torch.nn as nn
-from bioseq import cbioseq
-import torch.nn as nn
+
+from hattn import HTransformer1D
+from bioseq.softmax import SparseSoftmax
+
+
 import linear_attention_transformer as linformer
 import fast_transformer_pytorch as fast_transformer
 from fast_transformer_pytorch import FastTransformer
-from fast_transformer_pytorch.fast_transformer_pytorch import FastAttention
 from linear_attention_transformer.linear_attention_transformer import SelfAttention as LinSelfAttention
 from linear_attention_transformer.autoregressive_wrapper import AutoregressiveWrapper
 from x_transformers.x_transformers import DEFAULT_DIM_HEAD
 from x_transformers import XTransformer, AutoregressiveWrapper as XAutoregressiveWrapper, Encoder as XEncoder, CrossAttender, Decoder as XDecoder
-from hattn import HTransformer1D
+from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
+
+random.seed(0)
+
+def exists(x):
+    return x is not None
+
+
+def param_count(x):
+    return sum(map(lambda x: x.numel(), x.parameters()))
+
+
+class FastAttention(nn.Module):
+    def __init__(
+        self,
+        dim,
+        *,
+        heads = 8,
+        dim_head = 64,
+        max_seq_len = None,
+        pos_emb = None,
+        query_sparse_softmax=False,
+        key_sparse_softmax=False,
+        tied_sparse_softmax=False,
+        softmax_alpha=1.5
+    ):
+        super().__init__()
+        inner_dim = heads * dim_head
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        # rotary positional embedding
+
+        assert not (exists(pos_emb) and not exists(max_seq_len)), 'max_seq_len must be passed in if to use rotary positional embeddings'
+
+        self.pos_emb = pos_emb
+        self.max_seq_len = max_seq_len
+
+        # if using relative positional encoding, make sure to reduce pairs of consecutive feature dimension before doing projection to attention logits
+
+        dim_kvproj = dim_head // (1 + (pos_emb is not None))
+
+        self.to_q_attn_logits = nn.Linear(dim_head, 1, bias = False)  # for projecting queries to query attention logits
+        self.to_k_attn_logits = nn.Linear(dim_kvproj, 1, bias = False)  # for projecting keys to key attention logits
+        if query_sparse_softmax:
+            self.query_softmax = SparseSoftmax(softmax_alpha)
+        else:
+            self.query_softmax = softmax.Softmax()
+        if key_sparse_softmax:
+            self.key_softmax = self.query_softmax if tied_sparse_softmax else SparseSoftmax(softmax_alpha)
+        else:
+            self.key_softmax = softmax.Softmax()
+
+        # final transformation of values to "r" as in the paper
+
+        self.to_r = nn.Linear(dim_kvproj, dim_head)
+
+        self.to_out = nn.Linear(inner_dim, dim)
+
+    def forward(self, x, mask = None):
+        n, device, h, use_rotary_emb = x.shape[1], x.device, self.heads, exists(self.pos_emb)
+
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: einops.rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
+
+        mask_value = -torch.finfo(x.dtype).max
+        if mask is not None:
+            mask = einops.rearrange(mask, 'b n -> b () n')
+
+        # if relative positional encoding is needed
+
+        if use_rotary_emb:
+            freqs = self.pos_emb(torch.arange(self.max_seq_len, device = device), cache_key = self.max_seq_len)
+            freqs = einops.rearrange(freqs[:n], 'n d -> () () n d')
+            q_aggr, k_aggr, v_aggr = map(lambda t: apply_rotary_emb(freqs, t), (q, k, v))
+        else:
+            q_aggr, k_aggr, v_aggr = q, k, v
+
+        # calculate query attention logits
+
+        q_attn_logits = einops.rearrange(self.to_q_attn_logits(q), 'b h n () -> b h n') * self.scale
+        if mask is not None:
+            q_attn_logits = q_attn_logits.masked_fill(~mask, mask_value)
+        q_attn = self.query_softmax(q_attn_logits, dim=-1)
+
+        # calculate global query token
+
+        global_q = torch.einsum('b h n, b h n d -> b h d', q_attn, q_aggr)
+        global_q = einops.rearrange(global_q, 'b h d -> b h () d')
+
+        # bias keys with global query token
+
+        k = k * global_q
+
+        # if using rotary embeddings, do an inner product between adjacent pairs in the feature dimension
+
+        if use_rotary_emb:
+            k = einops.reduce(k, 'b h n (d r) -> b h n d', 'sum', r = 2)
+
+        # now calculate key attention logits
+
+        k_attn_logits = einops.rearrange(self.to_k_attn_logits(k), 'b h n () -> b h n') * self.scale
+        if mask is not None:
+            k_attn_logits = k_attn_logits.masked_fill(~mask, mask_value)
+        k_attn = self.key_softmax(k_attn_logits, dim=-1)
+
+        # calculate global key token
+
+        global_k = torch.einsum('b h n, b h n d -> b h d', k_attn, k_aggr)
+        global_k = einops.rearrange(global_k, 'b h d -> b h () d')
+
+        # bias the values
+
+        u = v_aggr * global_k
+
+        # if using rotary embeddings, do an inner product between adjacent pairs in the feature dimension
+
+        if use_rotary_emb:
+            u = einops.reduce(u, 'b h n (d r) -> b h n d', 'sum', r = 2)
+
+        # transformation step
+
+        r = self.to_r(u)
+
+        # paper then says to add the queries as a residual
+
+        r = r + q
+
+        # combine heads
+
+        r = einops.rearrange(r, 'b h n d -> b n (h d)')
+        return self.to_out(r)
 
 
 class FastEncoder(nn.Module):
@@ -25,11 +165,15 @@ class FastEncoder(nn.Module):
         heads = 8,
         dim_head = 64,
         ff_mult = 4,
-        absolute_pos_emb = False
+        absolute_pos_emb = False,
+        query_sparse_softmax=False,
+        key_sparse_softmax=False,
+        tied_sparse_softmax=False,
+        softmax_alpha=1.5
     ):
+        softmaxdict = {"query_sparse_softmax": query_sparse_softmax, "key_sparse_softmax": key_sparse_softmax, "tied_sparse_softmax": tied_sparse_softmax, "softmax_alpha": softmax_alpha}
         from fast_transformer_pytorch.fast_transformer_pytorch import FeedForward, RotaryEmbedding, PreNorm
         super().__init__()
-        self.token_emb = nn.Embedding(num_tokens, dim)
 
         # positional embeddings
 
@@ -45,7 +189,7 @@ class FastEncoder(nn.Module):
         self.layers = nn.ModuleList([])
 
         for _ in range(depth):
-            attn = FastAttention(dim, dim_head = dim_head, heads = heads, pos_emb = layer_pos_emb, max_seq_len = max_seq_len)
+            attn = FastAttention(dim, dim_head = dim_head, heads = heads, pos_emb = layer_pos_emb, max_seq_len = max_seq_len, **softmaxdict)
             ff = FeedForward(dim, mult = ff_mult)
 
             self.layers.append(nn.ModuleList([
@@ -70,22 +214,26 @@ class FastEncoder(nn.Module):
     def forward(
         self,
         x,
-        mask = None
+        mask = None,
+        return_embeddings = False
     ):
         n, device = x.shape[1], x.device
 
         if self.abs_pos_emb is not None:
             pos_emb = self.abs_pos_emb(torch.arange(n, device = device))
-            x = x + rearrange(pos_emb, 'n d -> () n d')
+            x = x + einops.rearrange(pos_emb, 'n d -> () n d')
 
         for attn, ff in self.layers:
             x = attn(x, mask = mask) + x
             x = ff(x) + x
 
-        return self.to_logits(x)
+        if not return_embeddings:
+            x = self.to_logits(x)
+
+        return x
 
 class TokenizerLayer(nn.Module):
-    def __init__(self, tokenizer, *, padlen, batch_first=False, nthreads=-1, destchar='i'):
+    def __init__(self, tokenizer, *, padlen, batch_first=True, nthreads=-1, destchar='i'):
         super().__init__()
         assert padlen >= 0
         self.tokenizer = tokenizer
@@ -99,12 +247,9 @@ class TokenizerLayer(nn.Module):
 
 class SeqEncoder(nn.Module):
     '''
-        emb_dim = None,
-        max_mem_len = 0.,
-        emb_dropout = 0.,
-        num_memory_tokens = None,
-        tie_embedding = False,
-        use_pos_emb = True
+        SeqEncoder - takes a tokenizer, an embedding layer, and an encoding layer
+        and propagates arguments to it.
+        Takes input strings/byte sequences and performs a transformer encoding.
     '''
     def __init__(self, tokenizer, embedding, encoder_type, emb_dropout=.1, *args, **kwargs):
         super().__init__()
@@ -131,7 +276,7 @@ class SeqEncoder(nn.Module):
         embs = self.embedding(tokens)
         # print("embs", embs.shape)
         embs = self.emb_dropout(embs)
-        encoding = self.encoder(embs)
+        encoding = self.encoder(embs, **kwargs)
         # print("encoding", encoding.shape)
         return encoding
 
@@ -176,7 +321,7 @@ class AttnArgs:
         return {"attn_" + key: value for key, value in self.__dict__.items()}
 
 
-Tokenizer = cbioseq.Tokenizer
+Tokenizer = bioseq.Tokenizer
 TransformerLMs = [linformer.LinearAttentionTransformerLM]
 Transformers = [FastTransformer, linformer.LinearAttentionTransformer, XTransformer]
 AutoTransformers = [linformer.AutoregressiveWrapper, XAutoregressiveWrapper]
@@ -185,46 +330,44 @@ Encoders = [XEncoder, FastTransformer, FastEncoder, HTransformer1D]
 Decoders = [XDecoder]
 
 
-class DifferentiableSparseSoftmax(nn.Module):
-    def __init__(self, alpha_init=1.5, n_iter=24, dtype=torch.float32, device=torch.device("gpu" if torch.cuda.is_available() else "cpu"),
-                 reduction='sum'):
-        super().__init__()
-        from entmax import EntmaxBisectLoss
-        self.loss = EntmaxBisectLoss(
-            torch.tensor([alpha_init], dtype=dtype, device=device),
-            n_iter=n_iter, reduction=reduction)
-
-    def forward(self, *args, **kwargs):
-        return self.loss(*args, **kwargs)
-
-
-
 if __name__ == "__main__":
+    from timeit import timeit
     # Test things!
+    nseqs = 5
     embdim = 32
-    attndim = 128
+    attndim = 64
     headdim = 64
     nlayers = 4
     nheads = 8
     emb_dropout = .15
-    seqlen = 256
-    tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=seqlen, batch_first=True, destchar='i')
+    seqlen = 1024
+    tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=seqlen, destchar='i')
     emb = bioseq.make_embedding(bioseq.DNATokenizer, embdim, norm_type=2.0, sparse=True)
 
-    encoder = SeqEncoder(tokl, emb, FastEncoder, num_tokens=tokl.tokenizer.alphabet_size(), dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, absolute_pos_emb=False)
-    hencoder = SeqEncoder(tokl, emb, HTransformer1D, num_tokens=tokl.tokenizer.alphabet_size(), causal=True, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, block_size=32)
-    sfmax = DifferentiableSparseSoftmax()
+    encoder = SeqEncoder(tokl, emb, FastEncoder, num_tokens=tokl.tokenizer.alphabet_size(), dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, absolute_pos_emb=False, key_sparse_softmax=True, tied_sparse_softmax=True, query_sparse_softmax=True)
+    hencoder = SeqEncoder(tokl, emb, HTransformer1D, num_tokens=tokl.tokenizer.alphabet_size(), causal=False, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, block_size=8)
+    xencoder = SeqEncoder(tokl, emb, XEncoder, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, use_scalenorm=True, gate_residual=True)
+    sfmax = SparseSoftmax()
     Xs = torch.randn(4, 10, dtype=torch.float64, requires_grad=True)
     Ys = torch.max(torch.randn_like(Xs), dim=1)[1]
     #print(sfmax(Xs, Ys))
     from random import choice
-    seqs = ["".join(choice("ACGT") for i in range(seqlen)) for j in range(500)]
-    houtput = hencoder(seqs)
-    print("hout.shape", houtput.shape)
-    houtput = hencoder(seqs, return_embeddings=True)
-    print("hout.shape (embeddings)", houtput.shape)
-    from timeit import timeit
-    print("Time to compute: ", timeit(lambda: hencoder(seqs), number=3))
+    seqs = ["".join(choice("ACGT") for i in range(seqlen)) for j in range(nseqs)]
+
+    # FastEncoder
     output = encoder(seqs)
     print(output.shape)
-    print("Time to compute: ", timeit(lambda: encoder(seqs), number=3))
+    print("Time to compute FastEncoder: ", timeit(lambda: encoder(seqs), number=2))
+
+    # XEncoder
+    output = xencoder(seqs)
+    print(output.shape)
+    print("Time to compute XEncoder: ", timeit(lambda: xencoder(seqs), number=2))
+
+
+    # Hierarchical Attention
+    houtput = hencoder(seqs, return_embeddings=True)
+    print("hout.shape (embeddings)", houtput.shape)
+    houtput = hencoder(seqs)
+    print("hout.shape", houtput.shape)
+    print("Time to compute HEncoder: ", timeit(lambda: hencoder(seqs), number=2))

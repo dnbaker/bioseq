@@ -1,11 +1,12 @@
 from math import log2, ceil
+import sys
 import torch
 from torch import nn, einsum, diagonal
 import torch.nn.functional as F
 
 from h_transformer_1d.reversible import ReversibleSequence, SequentialSequence
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
-from einops import rearrange, reduce, repeat
+import einops
 
 # helpers
 
@@ -90,9 +91,9 @@ class PreShiftTokens(nn.Module):
 # hierarchical attention helper functions
 
 def flip_every_two(t):
-    t = rearrange(t, 'b (n r) ... -> b n r ...', r = 2)
+    t = einops.rearrange(t, 'b (n r) ... -> b n r ...', r = 2)
     t = torch.flip(t, dims = (2,))                          # so we pay attention to the off-diagonal blocks in the attention matrix
-    t = rearrange(t, 'b n r ... -> b (n r) ...')
+    t = einops.rearrange(t, 'b n r ... -> b (n r) ...')
     return t
 
 # attention
@@ -139,10 +140,10 @@ class HAttention1D(nn.Module):
 
         # split out heads, and also divide sequence into blocks
 
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h = h), (q, k, v))
+        q, k, v = map(lambda t: einops.rearrange(t, 'b n (h d) -> (b h) n d', h = h), (q, k, v))
 
         if exists(mask):
-            mask = repeat(mask, 'b n -> (b h) n', h = h)
+            mask = einops.repeat(mask, 'b n -> (b h) n', h = h)
 
         # scale
 
@@ -152,7 +153,7 @@ class HAttention1D(nn.Module):
 
         if exists(self.pos_emb):
             freqs = self.pos_emb(torch.arange(pad_to_len, device = device), cache_key = pad_to_len)
-            freqs = rearrange(freqs, 'n d -> () n d')
+            freqs = einops.rearrange(freqs, 'n d -> () n d')
             q, k, v = map(lambda t: apply_rotary_emb(freqs, t), (q, k, v))
 
         # calculate number of levels until 2 x 2
@@ -165,10 +166,10 @@ class HAttention1D(nn.Module):
         qkvs = [(q, k, v, mask)]
 
         for level in range(num_levels):
-            q, k, v = map(lambda t: rearrange(t, 'b (n r) d -> b n r d', r = 2), (q, k, v))
+            q, k, v = map(lambda t: einops.rearrange(t, 'b (n r) d -> b n r d', r = 2), (q, k, v))
 
             if exists(mask):
-                mask = repeat(mask, 'b (n r) -> b n r', r = 2)
+                mask = einops.repeat(mask, 'b (n r) -> b n r', r = 2)
 
             # masked mean for queries and keys, but not values
 
@@ -200,11 +201,11 @@ class HAttention1D(nn.Module):
 
             A = A.sum(dim = -1)
 
-            y = rearrange(y, 'b ... n d -> b (... n) d')
-            A = rearrange(A, 'b ... i -> b (... i)')
+            y = einops.rearrange(y, 'b ... n d -> b (... n) d')
+            A = einops.rearrange(A, 'b ... i -> b (... i)')
             return y, A
 
-        to_blocks = lambda t: rearrange(t, 'b (n z) ... -> b n z ...', z = bsz)
+        to_blocks = lambda t: einops.rearrange(t, 'b (n z) ... -> b n z ...', z = bsz)
 
         # calculate Ys, as in the paper
 
@@ -222,7 +223,7 @@ class HAttention1D(nn.Module):
                 mask = to_blocks(mask)
                 q_mask = mask
                 k_mask = flip_every_two(mask) if not is_last else mask
-                S_mask = rearrange(q_mask, '... n -> ... n ()') * rearrange(k_mask, '... n -> ... () n')
+                S_mask = einops.rearrange(q_mask, '... n -> ... n ()') * einops.rearrange(k_mask, '... n -> ... () n')
 
             # flip keys and values to capture the off-diagonals
 
@@ -241,19 +242,19 @@ class HAttention1D(nn.Module):
             is_last = ind == (len(Ys) - 1)
 
             if not is_last and torch.is_tensor(Y):
-                Y = repeat(Y, 'b n d -> b (n r) d', r = 2)
+                Y = einops.repeat(Y, 'b n d -> b (n r) d', r = 2)
 
             if not is_last and torch.is_tensor(A):
-                A = repeat(A, 'b n -> b (n r)', r = 2)
+                A = einops.repeat(A, 'b n -> b (n r)', r = 2)
 
             Y = Y_level + Y
             A = A_level + A
 
-        out = Y / rearrange(A + eps, 'b n -> b n ()')
+        out = Y / einops.rearrange(A + eps, 'b n -> b n ()')
 
         # merge heads
 
-        out = rearrange(out, '(b h) n d -> b n (h d)', h = h)
+        out = einops.rearrange(out, '(b h) n d -> b n (h d)', h = h)
 
         # combine out
 
@@ -293,13 +294,13 @@ class CausalHAttention1D(nn.Module):
         seq = root_seq
 
         for ind in range(num_levels):
-            seq = rearrange(seq, '(n r) -> n r', r = 2)
+            seq = einops.rearrange(seq, '(n r) -> n r', r = 2)
             seq = seq.max(dim = -1).values
-            expanded_mask_seq = repeat(seq, 'n -> (n r)', r = (2 ** (ind + 1)))
+            expanded_mask_seq = einops.repeat(seq, 'n -> (n r)', r = (2 ** (ind + 1)))
             seqs.append(expanded_mask_seq)
 
         seq_keys = torch.stack(seqs, dim = 0)
-        mask = seq_keys > rearrange(root_seq, 'n -> () n')
+        mask = seq_keys > einops.rearrange(root_seq, 'n -> () n')
         self.register_buffer('mask', mask)
 
     def forward(self, x, **kwargs):
@@ -319,7 +320,7 @@ class CausalHAttention1D(nn.Module):
 
         # split out heads, and also divide sequence into blocks
 
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h = h), (q, k, v))
+        q, k, v = map(lambda t: einops.rearrange(t, 'b n (h d) -> (b h) n d', h = h), (q, k, v))
 
         # scale
 
@@ -329,7 +330,7 @@ class CausalHAttention1D(nn.Module):
 
         if exists(self.pos_emb):
             freqs = self.pos_emb(torch.arange(pad_to_len, device = device), cache_key = pad_to_len)
-            freqs = rearrange(freqs, 'n d -> () n d')
+            freqs = einops.rearrange(freqs, 'n d -> () n d')
             q, k, v = map(lambda t: apply_rotary_emb(freqs, t), (q, k, v))
 
         # calculate number of levels until 2 x 2
@@ -341,7 +342,7 @@ class CausalHAttention1D(nn.Module):
         qkvs = [(q, k, v)]
 
         for level in range(num_levels):
-            q, k, v = map(lambda t: rearrange(t, 'b (n r) d -> b n r d', r = 2), (q, k, v))
+            q, k, v = map(lambda t: einops.rearrange(t, 'b (n r) d -> b n r d', r = 2), (q, k, v))
 
             # masked mean for queries and keys, but not values
 
@@ -356,7 +357,7 @@ class CausalHAttention1D(nn.Module):
 
         def calculate_Y_and_A(q, k, v, mask_right_off_diagonals = False, causal_mask_diagonal = False):
             if mask_right_off_diagonals:
-                q, k, v = map(lambda t: rearrange(t, 'b (n r) ... -> b n r ...', r = 2), (q, k, v))
+                q, k, v = map(lambda t: einops.rearrange(t, 'b (n r) ... -> b n r ...', r = 2), (q, k, v))
                 q, k, v = map(lambda t: t[:, :, 1], (q, k, v))
 
             S = einsum('... i d, ... j d -> ... i j', q, k)
@@ -364,7 +365,7 @@ class CausalHAttention1D(nn.Module):
             if causal_mask_diagonal:
                 causal_mask = torch.ones(*S.shape[-2:], device = S.device).triu(1).bool()
                 mask_value = -torch.finfo(S.dtype).max
-                causal_mask = rearrange(causal_mask, 'i j -> () () i j')
+                causal_mask = einops.rearrange(causal_mask, 'i j -> () () i j')
                 S = S.masked_fill(causal_mask, mask_value)
 
             S = S - torch.amax(S, dim = -1, keepdim = True)
@@ -375,15 +376,15 @@ class CausalHAttention1D(nn.Module):
             A = A.sum(dim = -1)
 
             if mask_right_off_diagonals:
-                y, A = map(lambda t: rearrange(t, 'b n ... -> b n () ...'), (y, A))
+                y, A = map(lambda t: einops.rearrange(t, 'b n ... -> b n () ...'), (y, A))
                 y = F.pad(y, (0, 0, 0, 0, 1, 0), value = 0.)
                 A = F.pad(A, (0, 0, 1, 0), value = 0.)
 
-            y = rearrange(y, 'b ... d -> b (...) d')
-            A = rearrange(A, 'b ... -> b (...)')
+            y = einops.rearrange(y, 'b ... d -> b (...) d')
+            A = einops.rearrange(A, 'b ... -> b (...)')
             return y, A
 
-        to_blocks = lambda t: rearrange(t, 'b (n z) ... -> b n z ...', z = bsz)
+        to_blocks = lambda t: einops.rearrange(t, 'b (n z) ... -> b n z ...', z = bsz)
 
         # calculate Ys, as in the paper
 
@@ -413,13 +414,13 @@ class CausalHAttention1D(nn.Module):
         A = None
 
         for Y_level, A_level in Ys:
-            Y_level, A_level = map(lambda t: rearrange(t, '... -> () ...'), (Y_level, A_level))
+            Y_level, A_level = map(lambda t: einops.rearrange(t, '... -> () ...'), (Y_level, A_level))
 
             if torch.is_tensor(Y):
-                Y = repeat(Y, '... n d -> ... (n r) d', r = 2)
+                Y = einops.repeat(Y, '... n d -> ... (n r) d', r = 2)
 
             if torch.is_tensor(A):
-                A = repeat(A, '... n -> ... (n r)', r = 2)
+                A = einops.repeat(A, '... n -> ... (n r)', r = 2)
 
             Y = safe_cat(Y, Y_level)
             A = safe_cat(A, A_level)
@@ -430,8 +431,8 @@ class CausalHAttention1D(nn.Module):
 
         # mask and sum
 
-        Y_causal_mask = rearrange(causal_mask, 'h n -> h () n ()')
-        A_causal_mask = rearrange(causal_mask, 'h n -> h () n')
+        Y_causal_mask = einops.rearrange(causal_mask, 'h n -> h () n ()')
+        A_causal_mask = einops.rearrange(causal_mask, 'h n -> h () n')
 
         Y = Y.masked_fill(Y_causal_mask, 0.)
         A = A.masked_fill(A_causal_mask, 0.)
@@ -441,11 +442,11 @@ class CausalHAttention1D(nn.Module):
 
         # normalize
 
-        out = Y / rearrange(A + eps, 'b n -> b n ()')
+        out = Y / einops.rearrange(A + eps, 'b n -> b n ()')
 
         # merge heads
 
-        out = rearrange(out, '(b h) n d -> b n (h d)', h = h)
+        out = einops.rearrange(out, '(b h) n d -> b n (h d)', h = h)
 
         # combine out
 
@@ -476,7 +477,7 @@ class HTransformer1D(nn.Module):
         assert log2(max_seq_len // block_size).is_integer(), f'number of blocks {num_blocks} must be a power of 2'
 
         # self.token_emb = nn.Embedding(num_tokens, dim)
-        self.pos_emb = RotaryEmbedding(dim = dim_head)
+        self.pos_emb = RotaryEmbedding(dim = dim_head) if pos_emb else None
         self.max_seq_len = max_seq_len
 
         layers = nn.ModuleList([])
@@ -508,7 +509,6 @@ class HTransformer1D(nn.Module):
         )
 
     def forward(self, x, mask = None, return_embeddings=False):
-        print(x.shape)
         # b, n, device = *x.shape, x.device
         # assert n <= self.max_seq_len, 'sequence length must be less than the maximum sequence length'
         x = self.layers(x)
