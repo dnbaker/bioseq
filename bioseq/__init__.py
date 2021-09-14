@@ -3,6 +3,7 @@ from cbioseq import *
 from .tax import get_taxid
 import bioseq.tax as tax
 import bioseq.encoders as encoders
+import bioseq.hattn as hattn
 
 """
 bioseq provides tokenizers and utilities for generating embeddings
