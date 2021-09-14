@@ -11,7 +11,7 @@ from linear_attention_transformer.linear_attention_transformer import SelfAttent
 from linear_attention_transformer.autoregressive_wrapper import AutoregressiveWrapper
 from x_transformers.x_transformers import DEFAULT_DIM_HEAD
 from x_transformers import XTransformer, AutoregressiveWrapper as XAutoregressiveWrapper, Encoder as XEncoder, CrossAttender, Decoder as XDecoder
-from h_transformer_1d import HTransformer1D
+from hattn import HTransformer1D
 
 
 class FastEncoder(nn.Module):
@@ -116,7 +116,7 @@ class SeqEncoder(nn.Module):
         self.encoder = encoder_type(*args, **kwargs)
         assert hasattr(self.encoder, "forward")
 
-    def forward(self, inputs, device=None):
+    def forward(self, inputs, device=None, **kwargs):
         """
             Tokenizes
         """
@@ -125,14 +125,14 @@ class SeqEncoder(nn.Module):
         from torch import from_numpy, long as torchlong, int as torchint
         from x_transformers import Encoder
         tokens = self.tokenizer(inputs)
-        print(tokens.dtype, tokens.shape, tokens)
+        # print(tokens.dtype, tokens.shape, tokens)
         tokens = from_numpy(tokens).to(device)
-        print("tokens", tokens.shape)
+        # print("tokens", tokens.shape)
         embs = self.embedding(tokens)
-        print("embs", embs.shape)
+        # print("embs", embs.shape)
         embs = self.emb_dropout(embs)
         encoding = self.encoder(embs)
-        print("encoding", encoding.shape)
+        # print("encoding", encoding.shape)
         return encoding
 
 class FFArgs:
@@ -207,17 +207,24 @@ if __name__ == "__main__":
     nlayers = 4
     nheads = 8
     emb_dropout = .15
-    tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=250, batch_first=True, destchar='i')
+    seqlen = 256
+    tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=seqlen, batch_first=True, destchar='i')
     emb = bioseq.make_embedding(bioseq.DNATokenizer, embdim, norm_type=2.0, sparse=True)
 
     encoder = SeqEncoder(tokl, emb, FastEncoder, num_tokens=tokl.tokenizer.alphabet_size(), dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, absolute_pos_emb=False)
+    hencoder = SeqEncoder(tokl, emb, HTransformer1D, num_tokens=tokl.tokenizer.alphabet_size(), causal=True, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, block_size=32)
     sfmax = DifferentiableSparseSoftmax()
     Xs = torch.randn(4, 10, dtype=torch.float64, requires_grad=True)
     Ys = torch.max(torch.randn_like(Xs), dim=1)[1]
-    print(sfmax(Xs, Ys))
+    #print(sfmax(Xs, Ys))
     from random import choice
-    seqs = ["".join(choice("ACGT") for i in range(250)) for j in range(500)]
+    seqs = ["".join(choice("ACGT") for i in range(seqlen)) for j in range(500)]
+    houtput = hencoder(seqs)
+    print("hout.shape", houtput.shape)
+    houtput = hencoder(seqs, return_embeddings=True)
+    print("hout.shape (embeddings)", houtput.shape)
+    from timeit import timeit
+    print("Time to compute: ", timeit(lambda: hencoder(seqs), number=3))
     output = encoder(seqs)
     print(output.shape)
-    from timeit import timeit
     print("Time to compute: ", timeit(lambda: encoder(seqs), number=3))
