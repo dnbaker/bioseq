@@ -2,3 +2,4 @@ linear_attention_transformer
 fast_transformer_pytorch
 einops
 x-transformers
+entmax

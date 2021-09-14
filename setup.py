@@ -64,7 +64,7 @@ class BuildExt(build_ext):
         'msvc': [],
         'unix': [],
     }
-    
+
     if platform == 'darwin':
         darwin_opts = ['-mmacosx-version-min=10.7']# , '-libstd=libc++']
         # darwin_opts = []

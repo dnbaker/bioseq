@@ -25,6 +25,6 @@ def get_taxid(fn, isid=False):
         return int(check_output(cmd, shell=True).decode().strip())
     except:
         return -1
-        
+
 
 __all__ = ["get_taxid", "get_taxids"]
