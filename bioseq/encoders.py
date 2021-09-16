@@ -336,13 +336,13 @@ if __name__ == "__main__":
     from timeit import timeit
     # Test things!
     nseqs = 10
-    embdim = 128
-    attndim = 64
-    headdim = 32
-    nlayers = 6
-    nheads = 4
+    embdim = 32
+    attndim = 16
+    headdim = 16
+    nlayers = 3
+    nheads = 2
     emb_dropout = .15
-    seqlen = 512
+    seqlen = 4096
     tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=seqlen, destchar='i')
     emb = bioseq.make_embedding(bioseq.DNATokenizer, embdim, norm_type=2.0, sparse=True)
 
