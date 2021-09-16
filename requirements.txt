@@ -4,3 +4,4 @@ einops
 x-transformers
 entmax
 product-key-memory
+local-attention

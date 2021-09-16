@@ -7,7 +7,7 @@ import einops
 import torch
 import torch.nn as nn
 
-from hattn import HTransformer1D
+from bioseq.hattn import HTransformer1D
 from bioseq.softmax import SparseSoftmax
 
 
