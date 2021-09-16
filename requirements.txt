@@ -3,3 +3,4 @@ fast_transformer_pytorch
 einops
 x-transformers
 entmax
+product-key-memory

@@ -19,6 +19,7 @@ from linear_attention_transformer.autoregressive_wrapper import AutoregressiveWr
 from x_transformers.x_transformers import DEFAULT_DIM_HEAD
 from x_transformers import XTransformer, AutoregressiveWrapper as XAutoregressiveWrapper, Encoder as XEncoder, CrossAttender, Decoder as XDecoder
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
+from product_key_memory import PKM
 
 random.seed(0)
 
@@ -330,23 +331,29 @@ Encoders = [XEncoder, FastTransformer, FastEncoder, HTransformer1D]
 Decoders = [XDecoder]
 
 
+
 if __name__ == "__main__":
     from timeit import timeit
     # Test things!
-    nseqs = 5
-    embdim = 32
+    nseqs = 10
+    embdim = 128
     attndim = 64
-    headdim = 64
-    nlayers = 4
-    nheads = 8
+    headdim = 32
+    nlayers = 6
+    nheads = 4
     emb_dropout = .15
-    seqlen = 1024
+    seqlen = 512
     tokl = TokenizerLayer(bioseq.DNATokenizer, padlen=seqlen, destchar='i')
     emb = bioseq.make_embedding(bioseq.DNATokenizer, embdim, norm_type=2.0, sparse=True)
 
-    encoder = SeqEncoder(tokl, emb, FastEncoder, num_tokens=tokl.tokenizer.alphabet_size(), dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, absolute_pos_emb=False, key_sparse_softmax=True, tied_sparse_softmax=True, query_sparse_softmax=True)
-    hencoder = SeqEncoder(tokl, emb, HTransformer1D, num_tokens=tokl.tokenizer.alphabet_size(), causal=False, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, block_size=8)
-    xencoder = SeqEncoder(tokl, emb, XEncoder, dim=embdim, depth=nlayers, max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, use_scalenorm=True, gate_residual=True)
+    encoder = SeqEncoder(tokl, emb, FastEncoder, num_tokens=tokl.tokenizer.alphabet_size(), dim=embdim, depth=nlayers,
+                         max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, absolute_pos_emb=False, key_sparse_softmax=True, tied_sparse_softmax=True, query_sparse_softmax=True)
+    hencoder = SeqEncoder(tokl, emb, HTransformer1D, num_tokens=tokl.tokenizer.alphabet_size(), causal=False, dim=embdim, depth=nlayers,
+                          max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, block_size=8)
+    xencoder = SeqEncoder(tokl, emb, XEncoder, dim=embdim, depth=nlayers,
+                          max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, gate_residual=True, gate_values=True, rotary_pos_emb = True)
+    xdec = XDecoder(dim=embdim, depth=nlayers, dim_head=headdim, heads=nheads, ff_mult=4, gate_residual=True, gate_values=True, attn_talking_heads=True, rotary_pos_emb = True, cross_residual_attn=True)
+    #print(xdec)
     sfmax = SparseSoftmax()
     Xs = torch.randn(4, 10, dtype=torch.float64, requires_grad=True)
     Ys = torch.max(torch.randn_like(Xs), dim=1)[1]
@@ -371,3 +378,6 @@ if __name__ == "__main__":
     houtput = hencoder(seqs)
     print("hout.shape", houtput.shape)
     print("Time to compute HEncoder: ", timeit(lambda: hencoder(seqs), number=2))
+    decout = xdec(output)
+    print("encoder output shape: ", output.shape)
+    print("decoder output shape: ", decout.shape)
