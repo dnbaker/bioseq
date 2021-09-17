@@ -30,3 +30,5 @@ numpy is required
 pytorch (as torch) is also required
 
 Besides these, there are some python-only dependencies which setup.py should download for you.
+
+All of these should be installed via `python3 -m pip install -r requirements.txt`.
