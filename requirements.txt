@@ -5,3 +5,5 @@ x-transformers
 entmax
 product-key-memory
 local-attention
+numpy
+pybind

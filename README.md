@@ -21,3 +21,12 @@ tokenizing uses seq-first ordering by default as well, but this can be changed w
 one-hot encoding uses seq-first ordering (not batch-first). It does not support `batch_first`.
 
 Both of these are ~30x as fast as using bytes.translate + np.frombuffer + np.vstack + `torch.from_numpy`.
+
+
+## Dependencies
+
+pybind11 v2.7 is required, in order to support bytearray
+numpy is required
+pytorch (as torch) is also required
+
+Besides these, there are some python-only dependencies which setup.py should download for you.
