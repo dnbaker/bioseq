@@ -151,6 +151,8 @@ struct Tokenizer {
                 if(PyBytes_AsStringAndSize(item.ptr(), &s, &size))
                     throw std::invalid_argument("item is not a bytes object; this should never happen.");
                 strs.push_back({s, size});
+            } else if(py::isinstance<py::bytearray>(item)) {
+                strs.push_back({PyByteArray_AS_STRING(item.ptr()), PyByteArray_GET_SIZE(item.ptr())});
             } else if(py::isinstance<py::array>(item)) {
                 auto inf = py::cast<py::array>(item).request();
                 switch(inf.format.front()) {
@@ -221,6 +223,8 @@ struct Tokenizer {
                 if(PyBytes_AsStringAndSize(item.ptr(), &s, &size))
                     throw std::invalid_argument("item is not a bytes object; this should never happen.");
                 strs.push_back({s, size});
+            } else if(py::isinstance<py::bytearray>(item)) {
+                strs.push_back({PyByteArray_AS_STRING(item.ptr()), PyByteArray_GET_SIZE(item.ptr())});
             } else if(py::isinstance<py::array>(item)) {
                 auto inf = py::cast<py::array>(item).request();
                 switch(inf.format.front()) {
