@@ -267,6 +267,7 @@ class SeqEncoder(nn.Module):
         assert device is not None
         from torch import from_numpy, long as torchlong, int as torchint
         inputs = from_numpy(self.tokenizer(inputs)).to(device)
+        return inputs
 
 
     def forward(self, inputs, device=None, tokenize=True, **kwargs):
@@ -275,6 +276,7 @@ class SeqEncoder(nn.Module):
         """
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         from x_transformers import Encoder
         if tokenize:
             tokens = tokenizer(inputs, device=device)

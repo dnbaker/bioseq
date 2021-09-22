@@ -547,7 +547,7 @@ class AutoregressiveWrapper(nn.Module):
     @torch.no_grad()
     @eval_decorator
     def generate(self, start_tokens, seq_len, eos_token = None, temperature = 1., filter_logits_fn = top_k, filter_thres = 0.9, **kwargs):
-        if isinstance(self.net, bioseq.SeqEncoder):
+        if isinstance(self.net, bioseq.encoders.SeqEncoder):
             if eos_token is None:
                 eos = self.net.tokenizer.eos()
                 if eos >= 0:
@@ -592,8 +592,9 @@ class AutoregressiveWrapper(nn.Module):
         return out
 
     def forward(self, x, **kwargs):
-        if not isinstance(x, torch.Tensor) and isinstance(self.net, bioseq.SeqEncoder):
-            x = self.net.tokenize(x, device=self.net.device)
+        if not isinstance(x, torch.Tensor) and isinstance(self.net, bioseq.encoders.SeqEncoder):
+            device = kwargs.get("device", torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+            x = self.net.tokenize(x, device=device)
         xi = x[:, :-1]
         xo = x[:, 1:]
 

@@ -4,14 +4,7 @@ A C++/Python package performing fast one-hot encoding for DNA or Protein sequenc
 
 Offers 4-letter DNA, 20-letter amino acid, and a variety of other compressed protein and DNA alphabets, and optionally is parallelized.
 
-There are 3 items exposed:
-• Tokenizer, which can then tokenize
-
-• onehot_encode, which takes a Tokenizer, some options, and a sequence or batch of sequences
-
-• f_encode, which takes more options. This results in a temporary Tokenizer, so it might be faster to use the prior.
-
-These functions do one-hot encoding.
+Most of this is used via bioseq.Tokenizer.
 
 Tokenizer can tokenize (`batch_tokenize`), which creates array of tokens, (char by default),
 or it can one-hot encode (`batch_onehot_encode`), which takes the tokens one-step further into one-hot encoding.
