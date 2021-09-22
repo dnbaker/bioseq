@@ -78,5 +78,11 @@ void init_tokenize(py::module &m) {
     .def("pad", &Tokenizer::pad)
     .def("is_padded", &Tokenizer::is_padded)
     .def("includes_bos", &Tokenizer::includes_bos)
-    .def("includes_eos", &Tokenizer::includes_eos);
+    .def("includes_eos", &Tokenizer::includes_eos)
+    .def(py::pickle(
+        [](const Tokenizer &tok) -> py::tuple {return py::make_tuple(tok.key, tok.include_eos_, tok.include_bos_, tok.zero_onehot_pad_);},
+        [](py::tuple t) {
+            return Tokenizer(t[0].cast<std::string>(), t[1].cast<bool>(), t[2].cast<bool>(), t[3].cast<bool>());
+        }
+    ));
 }

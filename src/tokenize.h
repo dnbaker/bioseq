@@ -10,6 +10,7 @@ struct Tokenizer {
     const bool include_eos_;
     const bool include_bos_;
     const bool zero_onehot_pad_;
+    std::string key;
     // Whether to pad with all 0s (instead of one-hot encoding with a wholly new character for 'padding')
     // If true, then trailing sections are left as all 0s
     // if false, then the pad() character is one-hot encoded for padding sections
@@ -24,7 +25,7 @@ struct Tokenizer {
     // Always included: padding
     Tokenizer(const Alphabet &ca, bool eos=false, bool bos=false, bool zero_onehot_pad=false): ca_(&ca), include_eos_(eos), include_bos_(bos), zero_onehot_pad_(zero_onehot_pad) {
     }
-    Tokenizer(std::string key, bool include_eos, bool include_bos, bool zohpad): include_eos_(include_eos), include_bos_(include_bos), zero_onehot_pad_(zohpad) {
+    Tokenizer(std::string key_, bool include_eos, bool include_bos, bool zohpad): include_eos_(include_eos), include_bos_(include_bos), zero_onehot_pad_(zohpad), key(key_) {
         std::transform(key.begin(), key.end(), key.begin(),[](auto x){return std::toupper(x);});
         auto it = CAMAP.find(key);
         if(it == CAMAP.end()) {

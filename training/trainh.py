@@ -29,11 +29,13 @@ aa("--nheads", type=int, default=8)
 aa("--depth", "--nlayers", type=int, default=6)
 aa("--sparseemb", action='store_true', help="Use sparse embeddings.")
 aa("--learning-rate", "-R", type=float, default=2e-4)
-aa("--accumfreq", type=int, default=16)
+aa("--accumfreq", type=int, default=4)
 args = ap.parse_args()
 LEARNING_RATE = args.learning_rate
 GRADIENT_ACCUMULATE_EVERY = args.accumfreq
 torch.set_num_threads(1)
+if args.sparseemb:
+    raise Exception("Cannot use sparse embeddings rn")
 
 def roundup(x):
     x = x + 1
@@ -89,7 +91,7 @@ else:
     print("Using CPU with %d threads" % torch.get_num_threads())
 model = AutoregressiveWrapper(model)
 
-optim = torch.optim.SparseAdam(model.parameters(), lr=LEARNING_RATE)
+optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 tstart = time()
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
@@ -103,5 +105,9 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
     optim.step()
     optim.zero_grad()
+
+from datetime import datetime
+dstr = str(datetime.now()).replace(" ", "_").replace(":", "-")
+torch.save(model, f"hmodel.{dstr}.pt")
 
 print(f"Total time: {time() - tstart}")
