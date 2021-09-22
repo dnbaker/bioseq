@@ -1,4 +1,8 @@
+import os
+
 import bioseq
+import numpy as np
+import torch
 
 
 def FF2NP(x, tokenizer, destfile, *, batch_size=8192):
@@ -19,26 +23,40 @@ def FF2NP(x, tokenizer, destfile, *, batch_size=8192):
         
 
 
-class FlatFileLoader:
+class FlatFileDataset(torch.utils.data.DataLoader):
     def __init__(self, ff, tokenizer, *, destfile=None, batch_size=8192):
+        super(FlatFileDataset).__init__()
         assert isinstance(ff, bioseq.FlatFile)
         assert isinstance(tokenizer, bioseq.Tokenizer)
+        from time import time
+        tstart = time()
         if destfile is None:
             destfile = ff.path + ".padded"
         self.ff = ff
         self.tokenizer = tokenizer
-        self.seq_len = ff.maxseqlen()
-        self.mat, self.matpath = FF2NP(ff, tokenizer, destfile=destfile, batch_size=batch_size)
+        self.max_seq_len = ff.maxseqlen()
+        if os.path.isfile(destfile) and os.path.getsize(destfile) == ff.nseqs() * self.max_seq_len:
+            self.mat = np.memmap(destfile, dtype=np.uint8, shape=(ff.nseqs(), self.max_seq_len))
+            self.matpath = destfile
+        else:
+            self.mat, self.matpath = FF2NP(ff, tokenizer, destfile=destfile, batch_size=batch_size)
+            self.max_seq_len = ff.maxseqlen()
+        tstop = time()
+        print("Took %gs to create flat, padded RAM-access file" % (tstop - tstart))
     def __getitem__(self, index):
         import numpy as np
         from torch import from_numpy as frnp
-        return frnp(self.mat[index].astype(np.int32))
+        from torch.cuda import is_available as has_cuda
+        ret = frnp(self.mat[index].astype(np.int32))
+        if has_cuda():
+            ret = ret.cuda()
+        return ret
     def __len__(self):
         return self.mat.shape[0]
     def __enter__(self):
         return self
-    def __del__(self):
+    def cleanup(self):
         import os
-        del self.mat
+        self.mat = None
         if os.path.isfile(self.matpath):
             os.remove(self.matpath)

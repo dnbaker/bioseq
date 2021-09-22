@@ -5,6 +5,7 @@ from torch import nn, einsum, diagonal
 import torch.nn.functional as F
 
 from h_transformer_1d.reversible import ReversibleSequence, SequentialSequence
+import bioseq
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
 import einops
 
@@ -515,3 +516,90 @@ class HTransformer1D(nn.Module):
         if not return_embeddings:
             x = self.to_logits(x)
         return x
+
+def eval_decorator(fn):
+    def inner(model, *args, **kwargs):
+        was_training = model.training
+        model.eval()
+        out = fn(model, *args, **kwargs)
+        model.train(was_training)
+        return out
+    return inner
+
+# top k filtering
+
+def top_k(logits, thres = 0.9):
+    k = int((1 - thres) * logits.shape[-1])
+    val, ind = torch.topk(logits, k)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(1, ind, val)
+    return probs
+
+class AutoregressiveWrapper(nn.Module):
+    def __init__(self, net, ignore_index = -100, pad_value = 0):
+        super().__init__()
+        self.pad_value = pad_value
+        self.ignore_index = ignore_index
+
+        self.net = net
+        self.max_seq_len = net.max_seq_len
+
+    @torch.no_grad()
+    @eval_decorator
+    def generate(self, start_tokens, seq_len, eos_token = None, temperature = 1., filter_logits_fn = top_k, filter_thres = 0.9, **kwargs):
+        if isinstance(self.net, bioseq.SeqEncoder):
+            if eos_token is None:
+                eos = self.net.tokenizer.eos()
+                if eos >= 0:
+                    eos_token = eos
+        device = start_tokens.device
+        num_dims = len(start_tokens.shape)
+
+        if num_dims == 1:
+            start_tokens = start_tokens[None, :]
+
+        b, t = start_tokens.shape
+
+        out = start_tokens
+
+        for _ in range(seq_len):
+            x = out[:, -self.max_seq_len:]
+
+            logits = self.net(x, **kwargs)[:, -1, :]
+
+            filtered_logits = top_k(logits, thres = filter_thres)
+            probs = F.softmax(filtered_logits / temperature, dim=-1)
+
+            sample = torch.multinomial(probs, 1)
+
+            out = torch.cat((out, sample), dim=-1)
+
+            if exists(eos_token):
+                is_eos_token = (out == eos_token)
+
+                if is_eos_token.any(dim = -1).all():
+                    # mask out everything after the eos tokens
+                    shifted_is_eos_tokens = F.pad(is_eos_tokens, (1, -1))
+                    mask = shifted_is_eos_tokens.float().cumsum(dim = -1) >= 1
+                    out = out.masked_fill(mask, self.pad_value)
+                    break
+
+        out = out[:, t:]
+
+        if num_dims == 1:
+            out = out.squeeze(0)
+
+        return out
+
+    def forward(self, x, **kwargs):
+        if not isinstance(x, torch.Tensor) and isinstance(self.net, bioseq.SeqEncoder):
+            x = self.net.tokenize(x, device=self.net.device)
+        xi = x[:, :-1]
+        xo = x[:, 1:]
+
+        out = self.net(xi, tokenize=False, **kwargs)
+        if xo.dtype is not torch.long:
+            xo = xo.to(torch.long)
+        loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index = self.ignore_index)
+        return loss
+

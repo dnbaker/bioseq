@@ -63,13 +63,13 @@ struct FlatFile {
         return FlatFile(outpath, max_seq_len);
     }
     FlatFile(std::string inpath, std::string outpath): FlatFile(FlatFile::make(inpath, outpath)) {}
-    FlatFile(std::string path, uint32_t mslen=-1): path_(path), data_(path_), nseqs_(*(uint64_t *)(data_.data())),
+    FlatFile(std::string path, py::ssize_t mslen=-1): path_(path), data_(path_), nseqs_(*(uint64_t *)(data_.data())),
                                 offsets_((size_t *)(data_.data()) + 1, nseqs_ + 1), seq_offset_((nseqs_ + 2) * 8), max_seq_len_(mslen)
     {
-        if(mslen == uint32_t(-1)) {
+        if(mslen < 0) {
             max_seq_len_ = 0;
             for(size_t i = 0; i < nseqs(); ++i) {
-                if(const auto L = length(i);L > max_seq_len_) max_seq_len_ = L;
+                max_seq_len_ = std::max(uint32_t(length(i)), max_seq_len_);
             }
         }
     }
@@ -92,6 +92,9 @@ struct FlatFile {
     }
     py::list range_access(py::slice slc) const {
         return range_access(slc.attr("start").cast<py::ssize_t>(), slc.attr("stop").cast<py::ssize_t>(), slc.attr("step").cast<py::ssize_t>());
+    }
+    py::array indptr() const {
+        return py::array({{nseqs() + 1}}, offsets_.data());
     }
     py::list range_access(py::ssize_t i, py::ssize_t j, py::ssize_t step) const {
         py::list ret;
@@ -139,7 +142,7 @@ void init_fxstats(py::module &m) {
     .def_property_readonly("seq", &FlatFileIterator::sequence);
 
     py::class_<FlatFile>(m, "FlatFile")
-    .def(py::init<std::string>())
+    .def(py::init<std::string, py::ssize_t>(), py::arg("inputfile"), py::arg("maxseqlen") = -1)
     .def(py::init<std::string, std::string>())
     .def_readonly("path", &FlatFile::path_)
     .def("access", &FlatFile::access)
@@ -150,6 +153,7 @@ void init_fxstats(py::module &m) {
     .def("nseqs", &FlatFile::nseqs)
     .def("size", &FlatFile::nseqs)
     .def("seq_offset", &FlatFile::seq_offset)
+    .def("indptr", &FlatFile::indptr)
     .def("maxseqlen", &FlatFile::max_seq_len)
     .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>());
 

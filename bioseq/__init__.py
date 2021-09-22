@@ -114,7 +114,7 @@ def f_encode(seqbatch, key="DNA", bos=False, eos=False, padchar=False, padlen=-1
                          batch_first=batch_first, to_pytorch=to_pytorch, device=device)
 
 
-keys = ("SEB6", "SEB8", "SEB10", "SEV10", "MURPHY", "LIA10", "LIB10", "SEB6", "DAYHOFF", "DNA4", "DNA", "DNA5", "KETO", "PURPYR", "BYTES")
+keys = ("SEB6", "SEB8", "SEB10", "SEV10", "MURPHY", "LIA10", "LIB10", "SEB6", "DAYHOFF", "DNA4", "DNA", "DNA5", "KETO", "PURPYR", "BYTES", "AMINO20", "PROTEIN")
 bkeys = keys + tuple(map(str.lower, keys))
 
 
@@ -127,7 +127,10 @@ Reduced14Tokenizer = cbioseq.Tokenizer("SEB14")
 DayhoffTokenizer = cbioseq.Tokenizer("DAYHOFF")
 LIATokenizer = cbioseq.Tokenizer("LIA10")
 LIBTokenizer = cbioseq.Tokenizer("LIB10")
-default_tokenizers = {"DNA": DNATokenizer, "AMINO20": AmineTokenizer,
+default_tokenizers = {"DNA": DNATokenizer,
+                      "AMINO20": AmineTokenizer,
+                      "AMINE": AmineTokenizer,
+                      "PROTEIN": AmineTokenizer,
                       "SEB6": Reduced6Tokenizer,
                       "SEB8": Reduced8Tokenizer,
                       "SEB10": Reduced10Tokenizer,
@@ -143,6 +146,12 @@ bos_tokenizers = {k: cbioseq.Tokenizer(k, bos=True, eos=False, padchar=False) fo
 peos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=True) for k in bkeys}
 eos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=True, padchar=False) for k in bkeys}
 pos_tokenizers = {k: cbioseq.Tokenizer(k, bos=False, eos=False, padchar=True) for k in bkeys}
+total_tokenizer_dict = {}
+for bos in [0, 1]:
+    for eos in [0, 1]:
+        for padchar in [0, 1]:
+            for k in bkeys:
+                total_tokenizer_dict[(bos, eos, padchar, k)] = cbioseq.Tokenizer(k.upper(), bos=bos, eos=eos, padchar=padchar)
 
 
 def get_tokenizer_dict(bos, eos, padchar):

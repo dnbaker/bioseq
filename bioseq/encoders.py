@@ -261,18 +261,27 @@ class SeqEncoder(nn.Module):
         self.emb_dropout = nn.Dropout(emb_dropout)
         self.encoder = encoder_type(*args, **kwargs)
         assert hasattr(self.encoder, "forward")
+        self.max_seq_len = self.encoder.max_seq_len
 
-    def forward(self, inputs, device=None, **kwargs):
+    def tokenize(self, inputs, *, device):
+        assert device is not None
+        from torch import from_numpy, long as torchlong, int as torchint
+        inputs = from_numpy(self.tokenizer(inputs)).to(device)
+
+
+    def forward(self, inputs, device=None, tokenize=True, **kwargs):
         """
             Tokenizes
         """
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        from torch import from_numpy, long as torchlong, int as torchint
         from x_transformers import Encoder
-        tokens = self.tokenizer(inputs)
-        # print(tokens.dtype, tokens.shape, tokens)
-        tokens = from_numpy(tokens).to(device)
+        if tokenize:
+            tokens = tokenizer(inputs, device=device)
+        else:
+            tokens = inputs
+            if inputs.device is not device:
+                tokens = tokens.to(device)
         # print("tokens", tokens.shape)
         embs = self.embedding(tokens)
         # print("embs", embs.shape)

@@ -6,7 +6,7 @@ class SparseSoftmax(nn.Module):
     SparseSoftmax is a wrapper around entmax's entmax_bisect, which allows us to learn
     the parameter alpha in entmax, which determines how sparse a given layer's output should be
     """
-    def __init__(self, alpha_init=1.5, n_iter=24, dtype=torch.float32, device=torch.device("gpu" if torch.cuda.is_available() else "cpu"),
+    def __init__(self, alpha_init=1.5, n_iter=24, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
                  reduction='sum', requires_grad=True):
         super().__init__()
         from entmax import EntmaxBisectLoss
