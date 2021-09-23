@@ -106,5 +106,6 @@ if __name__ == "__main__":
         setup_requires=['pybind11'],
         cmdclass={'build_ext': BuildExt},
         zip_safe=False,
-        packages=find_packages()
+        packages=find_packages(),
+        scripts=['scripts/flatten_swiss', 'scripts/makeflatfile']
     )

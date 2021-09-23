@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+from multiprocessing import Pool, cpu_count
+import sys
+import os
+
+if __name__ == "__main__":
+    from bioseq import makeflat
+    from argparse import ArgumentParser as AP
+    ap = AP()
+    ap.add_argument("--threads", "-p", default=1, type=int)
+    ap.add_argument("files", nargs="+")
+    args = ap.parse_args()
+    mapper = Pool(args.threads).map if args.threads > 1 else map
+    FFs = list(mapper(makeflat, args.files))

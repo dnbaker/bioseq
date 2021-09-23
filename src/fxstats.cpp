@@ -73,7 +73,9 @@ struct FlatFile {
             }
         }
     }
-    FlatFile(FlatFile &&o) = delete;
+    FlatFile(FlatFile &&o): path_(o.path_), nseqs_(o.nseqs_), seq_offset_(o.seq_offset_), max_seq_len_(o.max_seq_len_) {
+        std::swap(data_, o.data_);
+    }
     FlatFile(const FlatFile &o) = default;
     auto &offsets() {return offsets_;}
     const auto &offsets() const {return offsets_;}

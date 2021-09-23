@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+from Bio.SeqIO import parse as SeqParse
+
+def fmtpos(x):
+    try:
+        return int(x)
+    except:
+        import Bio
+        if isinstance(x, Bio.SeqFeature.UnknownPosition):
+            return "?"
+        raise
+
+def feat2str(x):
+    loc = x.location
+    try:
+        start, stop = map(fmtpos, (loc.start, loc.end))
+    except Exception as e:
+        print(e, x)
+        raise
+    featid = x.id if x.id is not None else "NoID"
+    feattype = x.type if x.type is not None else "NoType"
+    qfstr = ";".join(k + ":" + v for k, v in x.qualifiers.items())
+    return f"{start}-{stop}-{featid}-{feattype}-{qfstr}"
+
+def flatten(inputfile, outputfile):
+    import gzip
+    import lzma
+    if inputfile.endswith(".gz"):
+        import gzip
+        ifp = gzip.open(inputfile, "rb")
+    elif inputfile.endswith(".xz"):
+        import lzma
+        ifp = lzma.open(inputfile, "rb")
+    else:
+        ifp = open(inputfile, "rb")
+    featnames = ["name", "id", "desc", "moltype", "dbrefs", "taxid", "genename", "organism", "comment", "features", "hostorgs", "keywords", "refs"]
+    CCHAR = '==NEWLINE=='
+    with (gzip.open(inputfile, "rb") if inputfile.endswith(".gz") else (lzma.open(inputfile, "rb") if inputfile.endswith("xz") else open(inputfile, "rb"))) as ifp:
+        with open(outputfile, "w") as ofp:
+            print("#" + "\t".join(featnames), file=ofp)
+            for seq in SeqParse(ifp, "swiss"):
+                # first few things
+                gt = seq.annotations.get
+                features = ";".join(map(feat2str, seq.features))
+                host_orgs = ";".join(seq.annotations.get("host_ncbi_taxid", []))
+                comment = seq.annotations.get('comment', "")
+                if CCHAR in comment:
+                    raise Exception()
+                outitems = [seq.name, seq.id, seq.description, seq.annotations['molecule_type'], "-".join(seq.dbxrefs), seq.annotations.get('ncbi_taxid', [-1])[0], gt('gene_name'), gt('organism'), comment.replace("\n", CCHAR),
+                            features, host_orgs, ";".join(seq.annotations.get("keywords", [])), ";".join(map(str, (x.pubmed_id for x in seq.annotations.get("references", []))))]
+                outitems = [x if x is not None else "" for x in outitems]
+                assert len(featnames) == len(outitems)
+                outstr = "\t".join(map(str, outitems))
+                for ct, fname in zip(outitems, featnames):
+                    if '\t' in ct:
+                        print(ct, fname)
+                        raise Exception()
+                print(outstr, file=ofp)
+
+
+if __name__ == "__main__":
+    import sys
+    from argparse import ArgumentParser as AP
+    ap = AP()
+    aa = ap.add_argument
+    aa("Input", help="Input SwissProt annotated sequence file")
+    aa("Output", nargs="?", const="")
+    args = ap.parse_args()
+    infile = args.Input
+    outfile = args.Output if args.Output else infile + ".flattened.tsv"
+    flatten(infile, outfile)
