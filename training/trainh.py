@@ -30,7 +30,8 @@ aa("--depth", "--nlayers", type=int, default=6)
 aa("--sparseemb", action='store_true', help="Use sparse embeddings.")
 aa("--learning-rate", "-R", type=float, default=2e-4)
 aa("--accumfreq", type=int, default=4)
-aa("--bidir-loss", action='store_true')
+aa("--bidir-loss", type=float, const=1., nargs='?')
+aa("--clip-grad-norm", "--clip", type=float, default=.25)
 args = ap.parse_args()
 LEARNING_RATE = args.learning_rate
 GRADIENT_ACCUMULATE_EVERY = args.accumfreq
@@ -75,7 +76,7 @@ ffl = bioseq.loaders.FlatFileDataset(ff, tokenizer)
 
 train_loader  = cycle(DataLoader(ffl, batch_size=args.batchsize))
 
-msl = ffl.max_seq_len + args.eos + args.bos
+msl = ffl.max_seq_len
 print("msl: %d. roundedup: %d\n" % (msl, roundup(msl)))
 msl = roundup(msl)
 
@@ -101,13 +102,12 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
     for __ in range(GRADIENT_ACCUMULATE_EVERY):
         nextbatch = next(train_loader)
         loss = model(nextbatch)
-        loss.backward()
         if args.bidir_loss:
-            bid_loss = model(torch.flip(nextbatch, (1,)))
-            loss += bid_loss
+            loss += args.bidir_loss * model(torch.flip(nextbatch, (1,)))
+        loss.backward()
 
     print(f'training loss: {loss.item()} after {time() - tstart}s')
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
     optim.step()
     optim.zero_grad()
 

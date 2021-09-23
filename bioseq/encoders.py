@@ -364,11 +364,9 @@ if __name__ == "__main__":
     xencoder = SeqEncoder(tokl, emb, XEncoder, dim=embdim, depth=nlayers,
                           max_seq_len=tokl.pad, heads=nheads, dim_head=headdim, ff_mult=4, gate_residual=True, gate_values=True, rotary_pos_emb = True)
     xdec = XDecoder(dim=embdim, depth=nlayers, dim_head=headdim, heads=nheads, ff_mult=4, gate_residual=True, gate_values=True, attn_talking_heads=True, rotary_pos_emb = True, cross_residual_attn=True)
-    #print(xdec)
     sfmax = SparseSoftmax()
     Xs = torch.randn(4, 10, dtype=torch.float64, requires_grad=True)
     Ys = torch.max(torch.randn_like(Xs), dim=1)[1]
-    #print(sfmax(Xs, Ys))
     from random import choice
     seqs = ["".join(choice("ACGT") for i in range(seqlen)) for j in range(nseqs)]
 

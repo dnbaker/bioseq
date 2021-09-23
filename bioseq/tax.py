@@ -1,3 +1,4 @@
+import sys
 
 # Simple taxonomic utilities
 
@@ -20,7 +21,7 @@ def get_taxid(fn, isid=False):
         fn = get_qstr(fn)
     from subprocess import check_output
     cmd = f"esearch -db nucleotide -query \"{fn}\"|esummary|xtract -pattern TaxId -element TaxId"
-    print(cmd)
+    print(cmd, file=sys.stderr, flush=True)
     try:
         return int(check_output(cmd, shell=True).decode().strip())
     except:

@@ -76,6 +76,7 @@ void init_tokenize(py::module &m) {
     .def("bos", &Tokenizer::bos)
     .def("eos", &Tokenizer::eos)
     .def("pad", &Tokenizer::pad)
+    .def_property_readonly("key", [](const Tokenizer &tok) {return tok.key;})
     .def("is_padded", &Tokenizer::is_padded)
     .def("includes_bos", &Tokenizer::includes_bos)
     .def("includes_eos", &Tokenizer::includes_eos)

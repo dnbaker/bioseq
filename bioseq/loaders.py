@@ -1,4 +1,5 @@
 import os
+import sys
 
 import bioseq
 import numpy as np
@@ -12,13 +13,13 @@ def FF2NP(x, tokenizer, destfile, *, batch_size=8192):
     msl = x.maxseqlen()
     total_msl = msl + tokenizer.includes_bos() + tokenizer.includes_eos()
     nseqs = x.nseqs()
-    retmat = np.memmap(destfile, mode='w+', dtype=np.uint8, shape=(nseqs, msl))
+    retmat = np.memmap(destfile, mode='w+', dtype=np.uint8, shape=(nseqs, total_msl))
     nbatches = (nseqs + batch_size - 1) // batch_size
     for i in range(nbatches):
         start = i * batch_size
-        stop = min(start + batch_size, nseqs)
-        subset = x.access(start, stop)
-        retmat[start:stop] = tokenizer.batch_tokenize(subset, padlen=total_msl, batch_first=True, destchar='B')
+        retmat[start:stop] = tokenizer.batch_tokenize(
+            x.access(i * batch_size, min(start + batch_size, nseqs)), padlen=msl, batch_first=True,
+            destchar='B')
     return (retmat, destfile)
         
 
@@ -31,10 +32,13 @@ class FlatFileDataset(torch.utils.data.DataLoader):
         from time import time
         tstart = time()
         if destfile is None:
-            destfile = ff.path + ".padded"
+            eosstr = 'eos' if tokenizer.eos() >= 0 else 'noeos'
+            bosstr = 'bos' if tokenizer.bos() >= 0 else 'nobos'
+            padstr = 'padchar' if tokenizer.is_padded() else "padmask"
+            destfile = f"{tokenizer.key}.{ff.path}.{eosstr}.{bosstr}.{padstr}.padded"
         self.ff = ff
         self.tokenizer = tokenizer
-        self.max_seq_len = ff.maxseqlen()
+        self.max_seq_len = ff.maxseqlen() + tokenizer.includes_bos() + tokenizer.includes_eos()
         if os.path.isfile(destfile) and os.path.getsize(destfile) == ff.nseqs() * self.max_seq_len:
             self.mat = np.memmap(destfile, dtype=np.uint8, shape=(ff.nseqs(), self.max_seq_len))
             self.matpath = destfile
@@ -42,7 +46,7 @@ class FlatFileDataset(torch.utils.data.DataLoader):
             self.mat, self.matpath = FF2NP(ff, tokenizer, destfile=destfile, batch_size=batch_size)
             self.max_seq_len = ff.maxseqlen()
         tstop = time()
-        print("Took %gs to create flat, padded RAM-access file" % (tstop - tstart))
+        print("Took %gs to create flat, padded RAM-access file" % (tstop - tstart), file=sys.stderr)
     def __getitem__(self, index):
         import numpy as np
         from torch import from_numpy as frnp
