@@ -34,7 +34,18 @@ class FlatFileDataset(torch.utils.data.DataLoader):
         self.max_seq_len = ff.maxseqlen() + tokenizer.includes_bos() + tokenizer.includes_eos()
     def __getitem__(self, index):
         import numpy as np
+        from torch import from_numpy as frnp
         return frnp(self.tokenizer.batch_tokenize([self.ff.access(index)], padlen=self.max_seq_len, batch_first=True, destchar='B')).to(torch.long).squeeze()
+    def access(self, slc, stop=None, step=None):
+        if isinstance(slc, int):
+            slc = slice(slc, stop, step)
+        from torch import from_numpy as frnp
+        print(f"slc: {slc}")
+        seqs = self.ff.access(slc.start, slc.stop, slc.step)
+        print(seqs, "seqs")
+        toks = self.tokenizer.batch_tokenize(seqs, padlen=self.max_seq_len, batch_first=True, destchar='B')
+        print(toks)
+        toks = frnp(toks).to(torch.long)
     def __len__(self):
         return self.ff.nseqs()
     def cleanup(self):
