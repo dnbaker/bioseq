@@ -40,11 +40,8 @@ class FlatFileDataset(torch.utils.data.DataLoader):
         if isinstance(slc, int):
             slc = slice(slc, stop, step)
         from torch import from_numpy as frnp
-        print(f"slc: {slc}")
         seqs = self.ff.access(slc.start, slc.stop, slc.step)
-        print(seqs, "seqs")
         toks = self.tokenizer.batch_tokenize(seqs, padlen=self.max_seq_len, batch_first=True, destchar='B')
-        print(toks)
         toks = frnp(toks).to(torch.long)
     def __len__(self):
         return self.ff.nseqs()
