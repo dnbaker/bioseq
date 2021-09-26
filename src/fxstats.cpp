@@ -172,7 +172,18 @@ void init_fxstats(py::module &m) {
     .def("seq_offset", &FlatFile::seq_offset)
     .def("indptr", &FlatFile::indptr)
     .def("maxseqlen", &FlatFile::max_seq_len)
-    .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>());
+    .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>())
+    .def("__getitem__", [](const FlatFile &x, py::ssize_t idx) {
+        py::ssize_t ai;
+        if(idx >= 0) {
+            ai = idx;
+        } else {
+            if(idx < -py::ssize_t(x.nseqs()))
+                throw std::out_of_range("For a negative index, idx must be >= -len(x)");
+            ai = x.nseqs() + idx;
+        }
+        return x.access(ai);
+    });
 
 
 #if 0

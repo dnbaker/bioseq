@@ -49,7 +49,7 @@ extra_compile_args = ['-march=native',
                       '-Wno-strict-aliasing', '-Wno-ignored-attributes', '-fno-wrapv',
                       '-Wall', '-Wextra', '-Wformat',
                       '-lz', '-fopenmp', "-lgomp",
-                      "-pipe", '-O0', '-DNDEBUG']
+                      "-pipe", '-O3', '-DNDEBUG']
 
 extra_link_opts = ["-fopenmp", "-lgomp", "-lz"]
 
