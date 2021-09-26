@@ -10,6 +10,7 @@ def fmtpos(x):
             return "?"
         raise
 
+
 def feat2str(x):
     loc = x.location
     try:
@@ -21,6 +22,7 @@ def feat2str(x):
     feattype = x.type if x.type is not None else "NoType"
     qfstr = ";".join(k + ":" + v for k, v in x.qualifiers.items())
     return f"{start}-{stop}-{featid}-{feattype}-{qfstr}"
+
 
 def flatten(inputfile, outputfile):
     import gzip
@@ -35,8 +37,10 @@ def flatten(inputfile, outputfile):
         ifp = open(inputfile, "rb")
     featnames = ["name", "id", "desc", "moltype", "dbrefs", "taxid", "genename", "organism", "comment", "features", "hostorgs", "keywords", "refs"]
     CCHAR = '==NEWLINE=='
+    outopen = gzip.open if outputfile.endswith('.gz') else (lzma.open if outputfile.endswith(".xz") else open)
+    outmode = ("wt" if outputfile.endswith(".xz") else "w")
     with (gzip.open(inputfile, "rb") if inputfile.endswith(".gz") else (lzma.open(inputfile, "rb") if inputfile.endswith("xz") else open(inputfile, "rb"))) as ifp:
-        with open(outputfile, "w") as ofp:
+        with outopen(outputfile, outmode) as ofp:
             print("#" + "\t".join(featnames), file=ofp)
             for seq in SeqParse(ifp, "swiss"):
                 # first few things
@@ -67,5 +71,5 @@ if __name__ == "__main__":
     aa("Output", nargs="?", const="")
     args = ap.parse_args()
     infile = args.Input
-    outfile = args.Output if args.Output else infile + ".flattened.tsv"
+    outfile = args.Output if args.Output else infile + ".flattened.tsv.gz"
     flatten(infile, outfile)

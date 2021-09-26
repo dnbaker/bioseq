@@ -6,6 +6,7 @@ import bioseq.encoders as encoders
 import bioseq.hattn as hattn
 import bioseq.softmax as softmax
 import bioseq.loaders as loaders
+import bioseq.annotations as annotations
 
 """
 bioseq provides tokenizers and utilities for generating embeddings

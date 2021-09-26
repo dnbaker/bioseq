@@ -72,9 +72,14 @@ struct FlatFile {
                 max_seq_len_ = std::max(uint32_t(length(i)), max_seq_len_);
             }
         }
+#ifndef NDEBUG
+        for(size_t i = 0; i < nseqs_; ++i) {
+            std::fprintf(stderr, "Seq %zu is %s\n", i, std::string(offset(i), length(i)).data());
+        }
+#endif
     }
     FlatFile(FlatFile &&o): path_(o.path_), nseqs_(o.nseqs_), seq_offset_(o.seq_offset_), max_seq_len_(o.max_seq_len_) {
-        std::swap(data_, o.data_);
+        std::swap_ranges((uint8_t *)&data_,(uint8_t *)&data_ + sizeof(data_), (uint8_t *)&o.data_);
     }
     FlatFile(const FlatFile &o) = default;
     auto &offsets() {return offsets_;}
@@ -92,18 +97,27 @@ struct FlatFile {
     const char*offset(size_t idx) const {
         return data_.data() + offsets_[idx] + seq_offset_;
     }
+//#define bytearray bytes
     py::list range_access(py::slice slc) const {
         return range_access(slc.attr("start").cast<py::ssize_t>(), slc.attr("stop").cast<py::ssize_t>(), slc.attr("step").cast<py::ssize_t>());
     }
     py::array indptr() const {
-        return py::array({{nseqs() + 1}}, offsets_.data());
+        py::array ret({{nseqs() + 1}}, offsets_.data());
+        uint64_t *ptr = (uint64_t *)ret.request().ptr;
+        std::copy(offsets().begin(), offsets().end(), ptr);
+        return ret;
     }
     py::list range_access(py::ssize_t i, py::ssize_t j, py::ssize_t step) const {
+        std::fprintf(stderr, "Accessing %zu:%zu with step %zd\n", i, j, step);
         py::list ret;
         if(step == 0) throw std::invalid_argument("step must be nonzero");
         if(step > 0) {
-            for(py::ssize_t idx = i; idx < j; idx += step)
+            for(py::ssize_t idx = i; idx < j; idx += step) {
+                //std::fprintf(stderr, "Offset accessing %zu\n", idx);
+                //std::fprintf(stderr, "Offset %zu is %zu\n", idx, offsets_[idx]);
+                //std::fprintf(stderr, "Accessing string %s\n", std::string(offset(idx), length(idx)).data());
                 ret.append(py::bytearray(offset(idx), length(idx)));
+            }
         } else {
             for(py::ssize_t idx = i; idx > j; idx += step)
                 ret.append(py::bytearray(offset(idx), length(idx)));
@@ -112,9 +126,9 @@ struct FlatFile {
     }
     py::bytearray access(size_t i) const {
         if(i >= nseqs_) throw std::out_of_range("Accessing sequence out of range");
-        auto start = offsets_[i] + seq_offset_;
-        auto len = offsets_[i + 1] - offsets_[i];
-        return py::bytearray(&data_[start], len);
+        //std::fprintf(stderr, "First 4 chars: %s\n", std::string(offset(i), 4).data());
+        //std::fprintf(stderr, "Accessing string %s\n", std::string(offset(i), length(i)).data());
+        return py::bytearray(offset(i), length(i));
     }
 };
 
@@ -134,6 +148,7 @@ struct FlatFileIterator {
         return ptr_->access(start_);
     }
 };
+//#undef bytearray
 
 void init_fxstats(py::module &m) {
     py::class_<FlatFileIterator>(m, "FlatFileIterator")
@@ -160,9 +175,11 @@ void init_fxstats(py::module &m) {
     .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>());
 
 
+#if 0
     m.def("makeflat", [](std::string inpath, std::string outpath) {
         return FlatFile::make(inpath, outpath);
-    }, py::arg("input"), py::arg("output") = "");
+    }, py::arg("input"), py::arg("output") = "", py::return_value_policy::move);
+#endif
     m.def("getstats", [](py::sequence items) {
         std::vector<std::string> paths;
         for(const auto item: items)

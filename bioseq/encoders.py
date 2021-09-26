@@ -6,6 +6,8 @@ import bioseq
 import einops
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn import Softmax
 
 from bioseq.hattn import HTransformer1D
 from bioseq.softmax import SparseSoftmax
@@ -15,11 +17,13 @@ import linear_attention_transformer as linformer
 import fast_transformer_pytorch as fast_transformer
 from fast_transformer_pytorch import FastTransformer
 from linear_attention_transformer.linear_attention_transformer import SelfAttention as LinSelfAttention
-from linear_attention_transformer.autoregressive_wrapper import AutoregressiveWrapper
+from linear_attention_transformer.autoregressive_wrapper import AutoregressiveWrapper as FAutoregressiveWrapper
 from x_transformers.x_transformers import DEFAULT_DIM_HEAD
-from x_transformers import XTransformer, AutoregressiveWrapper as XAutoregressiveWrapper, Encoder as XEncoder, CrossAttender, Decoder as XDecoder
+from x_transformers.autoregressive_wrapper import top_k, top_p, top_a
+from x_transformers import XTransformer, Encoder as XEncoder, CrossAttender, Decoder as XDecoder
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
 from product_key_memory import PKM
+
 
 random.seed(0)
 
@@ -68,11 +72,8 @@ class FastAttention(nn.Module):
         if query_sparse_softmax:
             self.query_softmax = SparseSoftmax(softmax_alpha)
         else:
-            self.query_softmax = softmax.Softmax()
-        if key_sparse_softmax:
-            self.key_softmax = self.query_softmax if tied_sparse_softmax else SparseSoftmax(softmax_alpha)
-        else:
-            self.key_softmax = softmax.Softmax()
+            self.query_softmax = Softmax(dim=-1)
+        self.key_softmax = (self.query_softmax if tied_sparse_softmax else SparseSoftmax(softmax_alpha)) if key_sparse_softmax else Softmax(dim=-1)
 
         # final transformation of values to "r" as in the paper
 
@@ -104,7 +105,7 @@ class FastAttention(nn.Module):
         q_attn_logits = einops.rearrange(self.to_q_attn_logits(q), 'b h n () -> b h n') * self.scale
         if mask is not None:
             q_attn_logits = q_attn_logits.masked_fill(~mask, mask_value)
-        q_attn = self.query_softmax(q_attn_logits, dim=-1)
+        q_attn = self.query_softmax(q_attn_logits)
 
         # calculate global query token
 
@@ -125,7 +126,7 @@ class FastAttention(nn.Module):
         k_attn_logits = einops.rearrange(self.to_k_attn_logits(k), 'b h n () -> b h n') * self.scale
         if mask is not None:
             k_attn_logits = k_attn_logits.masked_fill(~mask, mask_value)
-        k_attn = self.key_softmax(k_attn_logits, dim=-1)
+        k_attn = self.key_softmax(k_attn_logits)
 
         # calculate global key token
 
@@ -180,6 +181,8 @@ class FastEncoder(nn.Module):
 
         self.abs_pos_emb = nn.Embedding(max_seq_len, dim) if absolute_pos_emb else None
 
+        self.max_seq_len = max_seq_len
+
         layer_pos_emb = None
         if not absolute_pos_emb:
             assert (dim_head % 4) == 0, 'dimension of the head must be divisible by 4 to use rotary embeddings'
@@ -233,6 +236,104 @@ class FastEncoder(nn.Module):
 
         return x
 
+
+class XAutoregressiveWrapper(nn.Module):
+    def __init__(self, net, ignore_index = -100, pad_value = 0):
+        super().__init__()
+        self.pad_value = pad_value
+        self.ignore_index = ignore_index
+
+        self.net = net
+        self.max_seq_len = net.max_seq_len
+
+    @torch.no_grad()
+    def generate(self, start_tokens, seq_len, eos_token = None, temperature = 1., filter_logits_fn = top_k, filter_thres = 0.9, **kwargs):
+        device = start_tokens.device
+        was_training = self.net.training
+        num_dims = len(start_tokens.shape)
+
+        if num_dims == 1:
+            start_tokens = start_tokens[None, :]
+
+        b, t = start_tokens.shape
+
+        self.net.eval()
+        out = start_tokens
+        mask = kwargs.pop('mask', None)
+
+        if mask is None:
+            mask = torch.full_like(out, True, dtype=torch.bool, device=out.device)
+
+        for _ in range(seq_len):
+            x = out[:, -self.max_seq_len:]
+            mask = mask[:, -self.max_seq_len:]
+
+            logits = self.net(x, mask=mask, **kwargs)[:, -1, :]
+
+            if filter_logits_fn in {top_k, top_p}:
+                filtered_logits = filter_logits_fn(logits, thres = filter_thres)
+                probs = F.softmax(filtered_logits / temperature, dim=-1)
+
+            elif filter_logits_fn is entmax:
+                probs = entmax(logits / temperature, alpha = ENTMAX_ALPHA, dim=-1)
+
+            sample = torch.multinomial(probs, 1)
+
+            out = torch.cat((out, sample), dim=-1)
+            mask = F.pad(mask, (0, 1), value=True)
+
+            if exists(eos_token):
+                is_eos_token = (out == eos_token)
+
+                if is_eos_token.any(dim = -1).all():
+                    # mask out everything after the eos tokens
+                    shifted_is_eos_tokens = F.pad(is_eos_tokens, (1, -1))
+                    mask = shifted_is_eos_tokens.float().cumsum(dim = -1) >= 1
+                    out = out.masked_fill(mask, self.pad_value)
+                    break
+
+        out = out[:, t:]
+
+        if num_dims == 1:
+            out = out.squeeze(0)
+
+        self.net.train(was_training)
+        return out
+
+    def forward(self, x, **kwargs):
+        device = kwargs.get("device", torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        xi = x[:, :-1]
+        xo = x[:, 1:]
+        x = self.net.tokenize(x, device=device)
+
+        # help auto-solve a frequent area of confusion around input masks in auto-regressive
+        # if user supplies a mask that is only off by one from the source sequence, resolve it for them
+        mask = kwargs.get('mask', None)
+        if mask is not None and mask.shape[1] == x.shape[1]:
+            mask = mask[:, :-1]
+            kwargs['mask'] = mask
+
+        out = self.net(xi, tokenize=False, **kwargs)
+        loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index = self.ignore_index)
+        return loss
+'''
+    def forward(self, x, **kwargs):
+        # if not isinstance(x, torch.Tensor) and isinstance(self.net, bioseq.encoders.SeqEncoder):
+        device = kwargs.get("device", torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        x = self.net.tokenize(x, device=device)
+        print(x)
+        xi = x[:, :-1]
+        xo = x[:, 1:]
+
+        out = self.net(xi, tokenize=False, **kwargs)
+        if xo.dtype is not torch.long:
+            xo = xo.to(torch.long)
+        loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index = self.ignore_index)
+        return loss
+
+'''
+
+
 class TokenizerLayer(nn.Module):
     def __init__(self, tokenizer, *, padlen, batch_first=True, nthreads=-1, destchar='i'):
         super().__init__()
@@ -243,6 +344,9 @@ class TokenizerLayer(nn.Module):
         self.destchar = destchar
         self.nthreads = nthreads if nthreads > 0 else 1
     def forward(self, inputs):
+        if isinstance(inputs, torch.Tensor):
+            # No need to tokenize, already converted
+            return inputs
         return self.tokenizer.batch_tokenize(inputs, padlen=self.pad, batch_first=self.batch_first, nthreads=self.nthreads, destchar=self.destchar)
 
 
@@ -261,12 +365,18 @@ class SeqEncoder(nn.Module):
         self.emb_dropout = nn.Dropout(emb_dropout)
         self.encoder = encoder_type(*args, **kwargs)
         assert hasattr(self.encoder, "forward")
-        self.max_seq_len = self.encoder.max_seq_len
+        if hasattr(self.encoder, "max_seq_len"):
+            self.max_seq_len = self.encoder.max_seq_len
+        else:
+            self.max_seq_len = kwargs['max_seq_len']
 
     def tokenize(self, inputs, *, device):
         assert device is not None
         from torch import from_numpy, long as torchlong, int as torchint
-        inputs = from_numpy(self.tokenizer(inputs)).to(device)
+        if not isinstance(inputs, torch.Tensor):
+            inputs = from_numpy(self.tokenizer(inputs))
+        if device is not None:
+            inputs = inputs.to(device)
         return inputs
 
 
@@ -278,12 +388,11 @@ class SeqEncoder(nn.Module):
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.device = device
         from x_transformers import Encoder
-        if tokenize:
-            tokens = tokenizer(inputs, device=device)
-        else:
-            tokens = inputs
-            if inputs.device is not device:
-                tokens = tokens.to(device)
+        tokens = self.tokenize(inputs, device=device) if tokenize else inputs
+        if inputs.device is not device:
+            tokens = tokens.to(device)
+        tokens = tokens.to(torch.long)
+        #print(f"Tokens of shape {tokens.shape}", file=sys.stderr)
         # print("tokens", tokens.shape)
         embs = self.embedding(tokens)
         # print("embs", embs.shape)
