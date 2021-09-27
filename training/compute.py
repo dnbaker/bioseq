@@ -123,6 +123,7 @@ optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 NUM_BATCHES  = int((args.nepochs * len(ffl) + GRADIENT_ACCUMULATE_EVERY * args.batchsize - 1) / (GRADIENT_ACCUMULATE_EVERY * args.batchsize))
 print("Num batches: ", NUM_BATCHES)
+print(f"Using seqfile {args.sequencefile}")
 
 tstart = time()
 num = 0
