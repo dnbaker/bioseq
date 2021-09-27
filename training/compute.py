@@ -22,7 +22,7 @@ aa("--eos", action="store_true", help="Append an EOS tag to sequence")
 aa("--padchar", action="store_true", help="Treat padding characters are unique identifier. (Default: no embeddings)")
 aa("--alphabet", default="PROTEIN")
 aa("sequencefile", help="Input sequences; Must be in Fasta or Fastq format. All quality scores are ignored.")
-aa("--nepochs", type=int, default=1)
+aa("--nepochs", type=float, default=1)
 aa("--batchsize", type=int, default=8)
 aa("--embdim", type=int, default=64)
 aa("--headdim", type=int, default=64)
@@ -36,6 +36,7 @@ aa("--clip-grad-norm", "--clip", type=float, default=.25)
 aa("--transformer-type", "-T", choices=("Fast", "Hier", "X"), help="Type of transformer to use. Default: HTransformer1D (Hier)", default="X")
 aa("--sparse-softmax", action='store_true', help="Whether to use differentiably sparse top-k")
 aa("--nthreads", "-p", type=int, default=1)
+aa("--gate-residual", action='store_true')
 args = ap.parse_args()
 print("#Parameters: %s" % args, file=sys.stderr)
 LEARNING_RATE = args.learning_rate
@@ -103,7 +104,7 @@ elif args.transformer_type == "Hier":
 else:
     assert args.transformer_type == "X"
     TxType = XEncoder
-    baseargs.update({"gate_residual": True, 'rotary_pos_emb': True})
+    baseargs.update({"gate_residual": args.gate_residual, 'rotary_pos_emb': True, "reversible": True})
 seq_encoder = SeqEncoder(tokl, embeddings, TxType, **baseargs)
 encoder = seq_encoder.encoder
 model = seq_encoder
@@ -120,7 +121,8 @@ else:
     model = XAutoregressiveWrapper(model)
 optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-NUM_BATCHES  = (args.nepochs * len(ffl) + GRADIENT_ACCUMULATE_EVERY * args.batchsize - 1) // (GRADIENT_ACCUMULATE_EVERY * args.batchsize)
+NUM_BATCHES  = int((args.nepochs * len(ffl) + GRADIENT_ACCUMULATE_EVERY * args.batchsize - 1) / (GRADIENT_ACCUMULATE_EVERY * args.batchsize))
+print("Num batches: ", NUM_BATCHES)
 
 tstart = time()
 num = 0
@@ -149,6 +151,9 @@ print(f"Total cost of dataset: {np.sum(costs)}")
 
 from datetime import datetime
 dstr = str(datetime.now()).replace(" ", "_").replace(":", "-")
-torch.save(model, f"hmodel.{dstr}.pt")
+ebpos = f"{'eos'if args.eos else 'noeos'}" + f".{'bos'if args.bos else 'nobos'}"
+if args.padchar:
+    ebpos += ".padded"
+torch.save(model, f"hmodel.{dstr}.{args.transformer_type}.{args.alphabet}.heads{args.nheads}.depth{args.depth}.dim{args.embdim}.maxseqlen{msl}.{ebpos}.pt")
 
 print(f"Total time: {time() - tstart}")
