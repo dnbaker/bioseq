@@ -595,7 +595,6 @@ class AutoregressiveWrapper(nn.Module):
         # if not isinstance(x, torch.Tensor) and isinstance(self.net, bioseq.encoders.SeqEncoder):
         device = kwargs.get("device", torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         x = self.net.tokenize(x, device=device)
-        print(x)
         xi = x[:, :-1]
         xo = x[:, 1:]
 

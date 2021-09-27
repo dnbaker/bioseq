@@ -35,10 +35,12 @@ aa("--bidir-loss", type=float, const=1., nargs='?')
 aa("--clip-grad-norm", "--clip", type=float, default=.25)
 aa("--transformer-type", "-T", choices=("Fast", "Hier", "X"), help="Type of transformer to use. Default: HTransformer1D (Hier)", default="X")
 aa("--sparse-softmax", action='store_true', help="Whether to use differentiably sparse top-k")
+aa("--nthreads", "-p", type=int, default=1)
 args = ap.parse_args()
+print("#Parameters: %s" % args, file=sys.stderr)
 LEARNING_RATE = args.learning_rate
 GRADIENT_ACCUMULATE_EVERY = args.accumfreq
-torch.set_num_threads(1)
+torch.set_num_threads(args.nthreads)
 if args.sparseemb:
     raise Exception("Cannot use sparse embeddings rn")
 
@@ -137,11 +139,13 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
     torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
     optim.step()
     optim.zero_grad()
+from time import time
 print(f"Average time per item: {(time() - tstart) / (GRADIENT_ACCUMULATE_EVERY * args.batchsize * NUM_BATCHES)}")
 model.eval()
-costs = np.memmap("costs.f32.bin", mode="w+", shape=(len(ffl),), dtype=np.float32)
+costs = np.memmap(f"costs.{args.sequencefile}.{time()}.f32.bin", mode="w+", shape=(len(ffl),), dtype=np.float32)
 for i in range(len(ffl)):
     costs[i] = model(ffl[i].to(torch.long).unsqueeze(0))
+print(f"Total cost of dataset: {np.sum(costs)}")
 
 from datetime import datetime
 dstr = str(datetime.now()).replace(" ", "_").replace(":", "-")

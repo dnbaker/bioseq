@@ -305,6 +305,7 @@ class XAutoregressiveWrapper(nn.Module):
         xi = x[:, :-1]
         xo = x[:, 1:]
         x = self.net.tokenize(x, device=device)
+        xo = xo.to(device)
 
         # help auto-solve a frequent area of confusion around input masks in auto-regressive
         # if user supplies a mask that is only off by one from the source sequence, resolve it for them
@@ -388,14 +389,15 @@ class SeqEncoder(nn.Module):
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.device = device
         from x_transformers import Encoder
-        tokens = self.tokenize(inputs, device=device) if tokenize else inputs
+        if tokenize:
+            tokens = self.tokenize(inputs, device=device)
+        else:
+            tokens = inputs
         if inputs.device is not device:
             tokens = tokens.to(device)
         tokens = tokens.to(torch.long)
-        #print(f"Tokens of shape {tokens.shape}", file=sys.stderr)
-        # print("tokens", tokens.shape)
         embs = self.embedding(tokens)
-        # print("embs", embs.shape)
+        # print(f"embs {embs} {embs.device}")
         embs = self.emb_dropout(embs)
         encoding = self.encoder(embs, **kwargs)
         # print("encoding", encoding.shape)
