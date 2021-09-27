@@ -512,7 +512,7 @@ class HTransformer1D(nn.Module):
     def forward(self, x, mask = None, return_embeddings=False):
         # b, n, device = *x.shape, x.device
         # assert n <= self.max_seq_len, 'sequence length must be less than the maximum sequence length'
-        x = self.layers(x)
+        x = self.layers(x, mask=mask)
         if not return_embeddings:
             x = self.to_logits(x)
         return x
