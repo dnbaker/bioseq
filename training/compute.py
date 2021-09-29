@@ -5,7 +5,7 @@ from time import time
 
 import bioseq
 
-from bioseq.encoders import SeqEncoder, HTransformer1D, XEncoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper
+from bioseq.decoders import SeqEncoder, HTransformer1D, XDecoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper
 from bioseq.hattn import AutoregressiveWrapper as HAutoregressor
 from argparse import ArgumentParser as AP
 import numpy as np
@@ -32,11 +32,13 @@ aa("--sparseemb", action='store_true', help="Use sparse embeddings.")
 aa("--learning-rate", "-R", type=float, default=2e-4)
 aa("--accumfreq", type=int, default=4)
 aa("--bidir-loss", type=float, const=1., nargs='?')
-aa("--clip-grad-norm", "--clip", type=float, default=.25)
+aa("--clip-grad-norm", "--clip", type=float, default=.5)
 aa("--transformer-type", "-T", choices=("Fast", "Hier", "X"), help="Type of transformer to use. Default: HTransformer1D (Hier)", default="X")
 aa("--sparse-softmax", action='store_true', help="Whether to use differentiably sparse top-k")
 aa("--nthreads", "-p", type=int, default=1)
 aa("--gate-residual", action='store_true')
+aa("--augment", type=int, default=0, help="Number of mutations to introduce while augmenting data. Default: 0.")
+aa("--augment-frac", type=float, default=.5, help="Fraction of sequences to augment. Default: 0.5, but only used if --augment is set.")
 args = ap.parse_args()
 print("#Parameters: %s" % args, file=sys.stderr)
 LEARNING_RATE = args.learning_rate
@@ -66,6 +68,12 @@ def cycle(x):
         yield from x
 
 
+from datetime import datetime
+dstr = str(datetime.now()).replace(" ", "_").replace(":", "-")
+ebpos = f"{'eos'if args.eos else 'noeos'}" + f".{'bos'if args.bos else 'nobos'}"
+if args.padchar:
+    ebpos += ".padded"
+sequencefile = args.sequencefile
 
 embeddings = bioseq.make_embedding(tokenizer, args.embdim, norm_type=2.0, sparse=args.sparseemb)
 
@@ -77,7 +85,7 @@ if os.path.isfile(ffp):
 else:
     print("Making flatfile", file=sys.stderr)
     ff = bioseq.FlatFile(args.sequencefile, ffp)
-ffl = bioseq.loaders.FlatFileDataset(ff, tokenizer)
+ffl = bioseq.loaders.FlatFileDataset(ff, tokenizer, augment=args.augment, augment_frac=args.augment_frac)
 
 train_loader  = cycle(DataLoader(ffl, batch_size=args.batchsize))
 
@@ -87,10 +95,11 @@ if args.transformer_type == "Hier":
     print(f"Padding msl to next power of to: {msl}->{nmsl}",file=sys.stderr)
     msl = nmsl
     del nmsl
+unique_name = f"{sequencefile}.{dstr}.{args.transformer_type}.{args.alphabet}.heads{args.nheads}.depth{args.depth}.dim{args.embdim}.maxseqlen{msl}.{ebpos}"
 # print("msl: %d. roundedup: %d\n" % (msl, roundup(msl)))
 # msl = roundup(msl)
 
-tokl = bioseq.encoders.TokenizerLayer(tokenizer, padlen=msl)
+tokl = bioseq.decoders.TokenizerLayer(tokenizer, padlen=msl)
 
 argdict = {}
 
@@ -103,7 +112,7 @@ elif args.transformer_type == "Hier":
     baseargs.update({"causal": True, "reversible": True})
 else:
     assert args.transformer_type == "X"
-    TxType = XEncoder
+    TxType = XDecoder
     baseargs.update({"gate_residual": args.gate_residual, 'rotary_pos_emb': True, "reversible": True})
 seq_encoder = SeqEncoder(tokl, embeddings, TxType, **baseargs)
 encoder = seq_encoder.encoder
@@ -145,16 +154,11 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
 from time import time
 print(f"Average time per item: {(time() - tstart) / (GRADIENT_ACCUMULATE_EVERY * args.batchsize * NUM_BATCHES)}")
 model.eval()
-costs = np.memmap(f"costs.{args.sequencefile}.{time()}.f32.bin", mode="w+", shape=(len(ffl),), dtype=np.float32)
+costs = np.memmap(f"costs.{unique_name}.{time()}.f32.bin", mode="w+", shape=(len(ffl),), dtype=np.float32)
 for i in range(len(ffl)):
     costs[i] = model(ffl[i].to(torch.long).unsqueeze(0))
 print(f"Total cost of dataset: {np.sum(costs)}")
 
-from datetime import datetime
-dstr = str(datetime.now()).replace(" ", "_").replace(":", "-")
-ebpos = f"{'eos'if args.eos else 'noeos'}" + f".{'bos'if args.bos else 'nobos'}"
-if args.padchar:
-    ebpos += ".padded"
-torch.save(model, f"hmodel.{dstr}.{args.transformer_type}.{args.alphabet}.heads{args.nheads}.depth{args.depth}.dim{args.embdim}.maxseqlen{msl}.{ebpos}.pt")
+torch.save(model, f"hmodel.{unique_name}.pt")
 
 print(f"Total time: {time() - tstart}")

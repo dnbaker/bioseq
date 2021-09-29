@@ -2,11 +2,12 @@ import cbioseq
 from cbioseq import *
 from .tax import get_taxid
 import bioseq.tax as tax
-import bioseq.encoders as encoders
+import bioseq.decoders as decoders
 import bioseq.hattn as hattn
 import bioseq.softmax as softmax
 import bioseq.loaders as loaders
 import bioseq.annotations as annotations
+import bioseq.blosum as blosum
 
 """
 bioseq provides tokenizers and utilities for generating embeddings
@@ -198,4 +199,4 @@ __all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax",
            "make_embedding",
            "bos_tokenizers", "eos_tokenizers", "beos_tokenizers", "pbeos_tokenizers", "peos_tokenizers", "pbos_tokenizers", "pos_tokenizers", "default_tokenizers", "get_tokenizer_dict",
            "DNATokenizer", "AmineTokenizer", "Reduced6Tokenizer", "Reduced8Tokenizer", "Reduced10Tokenizer", "Reduced14Tokenizer", "DayhoffTokenizer", "LIATokenizer", "LIBTokenizer",
-           "encoders", 'softmax', 'hattn', 'loaders', 'torchify']
+           "decoders", 'softmax', 'hattn', 'loaders', 'torchify']

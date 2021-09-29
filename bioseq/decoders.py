@@ -370,6 +370,8 @@ class SeqEncoder(nn.Module):
             self.max_seq_len = self.encoder.max_seq_len
         else:
             self.max_seq_len = kwargs['max_seq_len']
+        # Use kaiming_normal to initialize embeddings
+        torch.nn.init.kaiming_normal_(self.embedding.weight)
 
     def tokenize(self, inputs, *, device):
         assert device is not None

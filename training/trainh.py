@@ -5,7 +5,7 @@ from time import time
 
 import bioseq
 
-from bioseq.encoders import SeqEncoder, HTransformer1D, XEncoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper
+from bioseq.decoders import SeqEncoder, HTransformer1D, XDecoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper
 from bioseq.hattn import AutoregressiveWrapper as HAutoregressor
 from argparse import ArgumentParser as AP
 import numpy as np
@@ -35,10 +35,14 @@ aa("--bidir-loss", type=float, const=1., nargs='?')
 aa("--clip-grad-norm", "--clip", type=float, default=.25)
 aa("--transformer-type", "-T", choices=("Fast", "Hier", "X"), help="Type of transformer to use. Default: HTransformer1D (Hier)", default="X")
 aa("--sparse-softmax", action='store_true', help="Whether to use differentiably sparse top-k")
+aa("--nthreads", "-p", type=int, default=1)
+aa("--gate-residual", action='store_true')
+aa("--augment", type=int, default=0, help="Number of mutations to introduce while augmenting data. Default: 0.")
+aa("--augment-frac", type=float, default=.5, help="Fraction of sequences to augment. Default: 0.5, but only used if --augment is set.")
 args = ap.parse_args()
 LEARNING_RATE = args.learning_rate
 GRADIENT_ACCUMULATE_EVERY = args.accumfreq
-torch.set_num_threads(1)
+torch.set_num_threads(args.nthreads)
 if args.sparseemb:
     raise Exception("Cannot use sparse embeddings rn")
 
@@ -88,7 +92,7 @@ if args.transformer_type == "Hier":
 # print("msl: %d. roundedup: %d\n" % (msl, roundup(msl)))
 # msl = roundup(msl)
 
-tokl = bioseq.encoders.TokenizerLayer(tokenizer, padlen=msl)
+tokl = bioseq.decoders.TokenizerLayer(tokenizer, padlen=msl)
 
 argdict = {}
 
@@ -101,8 +105,8 @@ elif args.transformer_type == "Hier":
     baseargs.update({"causal": True, "reversible": True})
 else:
     assert args.transformer_type == "X"
-    TxType = XEncoder
-    baseargs.update({"gate_residual": True, 'rotary_pos_emb': True})
+    TxType = XDecoder
+    baseargs.update({"gate_residual": args.gate_residual, 'rotary_pos_emb': True, "reversible": True})
 seq_encoder = SeqEncoder(tokl, embeddings, TxType, **baseargs)
 encoder = seq_encoder.encoder
 model = seq_encoder
@@ -132,7 +136,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
             loss += args.bidir_loss * model(torch.flip(nextbatch, (1,)))
         loss.backward()
 
-    print(f'training loss: {loss.item()} after {time() - tstart}s')
+    print(f'training loss: {loss.item()} after {time() - tstart}s', file=sys.stderr, flush=True)
     torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
     optim.step()
     optim.zero_grad()
