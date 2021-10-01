@@ -102,7 +102,7 @@ if __name__ == "__main__":
         description='A python module for tokenizing biological sequences',
         long_description='',
         ext_modules=ext_modules,
-        install_requires=['pybind11', 'numpy>=0.19', 'einops', 'torch', 'fast_transformer_pytorch', 'linear_attention_transformer', 'product-key-memory', 'x-transformers'],
+        install_requires=['pybind11', 'numpy>=0.19', 'einops', 'torch', 'fast_transformer_pytorch', 'linear_attention_transformer', 'product-key-memory', 'x-transformers', 'memcnn'],
         setup_requires=['pybind11'],
         cmdclass={'build_ext': BuildExt},
         zip_safe=False,

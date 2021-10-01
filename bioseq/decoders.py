@@ -24,6 +24,8 @@ from x_transformers import XTransformer, Encoder as XEncoder, CrossAttender, Dec
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
 from product_key_memory import PKM
 
+from fast_transformer_pytorch.fast_transformer_pytorch import PreNorm
+
 
 random.seed(0)
 
@@ -174,7 +176,7 @@ class FastEncoder(nn.Module):
         softmax_alpha=1.5
     ):
         softmaxdict = {"query_sparse_softmax": query_sparse_softmax, "key_sparse_softmax": key_sparse_softmax, "tied_sparse_softmax": tied_sparse_softmax, "softmax_alpha": softmax_alpha}
-        from fast_transformer_pytorch.fast_transformer_pytorch import FeedForward, RotaryEmbedding, PreNorm
+        from fast_transformer_pytorch.fast_transformer_pytorch import FeedForward, RotaryEmbedding
         super().__init__()
 
         # positional embeddings

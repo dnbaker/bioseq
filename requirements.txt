@@ -8,3 +8,4 @@ local-attention
 numpy
 pybind11==2.7.1
 feedback-transformer-pytorch
+memcnn
