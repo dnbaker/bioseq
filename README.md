@@ -24,6 +24,13 @@ one-hot encoding uses seq-first ordering (not batch-first). It does not support 
 Both of these are ~30x as fast as using bytes.translate + np.frombuffer + np.vstack + `torch.from_numpy`,
 and ~500x as fast as transformers.tokenizer.batch\_encode\_plus.
 
+1. To train Transformers, you need to use `batch_first=True`, followed by torch.nn.Embedding.
+2. To train CNNs, tokenize with `batch_first=True`, embed with torch.nn.Embedding, and then apply `lambda x: einops.rearrange(x, 'batch seq emb -> batch emb seq')`.
+   This is because CNNs expect (Batch, C, L)
+3. To train LSTMs, use `batch_first=False` to tokenize, and embed with torch.nn.Embedding
+
+Basically, you only want `batch_first=False` for LSTM training, and using CNNs will require a rearrange call due to the varying expectation of dimension ordering.
+
 ## DataLoading
 We use a bioseq.FlatFile method, which provides random access to the sequences in a FAST{Q,A} file.
 This is then used by bioseq.FlatFileDataset for use with torch.utils.data.DataLoader.
