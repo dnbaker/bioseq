@@ -171,7 +171,8 @@ void init_fxstats(py::module &m) {
     .def("size", &FlatFile::nseqs)
     .def("seq_offset", &FlatFile::seq_offset)
     .def("indptr", &FlatFile::indptr)
-    .def("maxseqlen", &FlatFile::max_seq_len)
+    .def_property_readonly("maxseqlen", &FlatFile::max_seq_len)
+    .def_property_readonly("max_seq_len", &FlatFile::max_seq_len)
     .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>())
     .def("__getitem__", [](const FlatFile &x, py::ssize_t idx) {
         py::ssize_t ai;

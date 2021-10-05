@@ -11,7 +11,7 @@ def FF2NP(x, tokenizer, destfile, *, batch_size=8192):
     import numpy as np
     assert isinstance(x, bioseq.FlatFile)
     assert isinstance(tokenizer, bioseq.Tokenizer)
-    msl = x.maxseqlen()
+    msl = x.maxseqlen
     total_msl = msl + tokenizer.includes_bos() + tokenizer.includes_eos()
     nseqs = x.nseqs()
     retmat = np.memmap(destfile, mode='w+', dtype=np.uint8, shape=(nseqs, total_msl))
@@ -37,7 +37,8 @@ class FlatFileDataset(torch.utils.data.Dataset):
         assert isinstance(tokenizer, bioseq.Tokenizer)
         self.ff = ff
         self.tokenizer = tokenizer
-        self.max_seq_len = ff.maxseqlen() + tokenizer.includes_bos() + tokenizer.includes_eos()
+        self.max_seq_len = ff.maxseqlen + tokenizer.includes_bos() + tokenizer.includes_eos()
+        self.maxseqlen = self.max_seq_len
         self.augment = augment
         self.augment_frac = augment_frac
         from numpy.random import default_rng
