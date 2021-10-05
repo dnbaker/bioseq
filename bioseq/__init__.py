@@ -209,7 +209,8 @@ class PyViewFF:
         res = self.seqs[self.offsets[idx]:self.offsets[idx + 1]]
         return bytes(res)
     def __getitem__(self, idx):
-        if isinstance(idx, int): return self.access(idx)
+        if isinstance(idx, int):
+            return self.access(idx)
         elif isinstance(idx, slice):
             return [self.access(x) for x in range(idx.start, idx.stop, idx.step)]
         else:
