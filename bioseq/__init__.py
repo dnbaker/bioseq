@@ -195,6 +195,29 @@ def torchify(arr):
     return from_numpy(arr)
 
 
+class PyViewFF:
+    '''
+    PyViewFF provides a pure-python view into the C++ FlatFile database.
+    '''
+    def __init__(self, path):
+        fp = np.memmap(path, mode='r', dtype=np.uint8)
+        self.nseqs = int(fp[:8].view(np.uint64)[0])
+        self.offsets = fp[8:8 * (2 + self.nseqs)].view(np.uint64)
+        self.seqs = fp[8 * (2 + self.nseqs):]
+        self.fp = fp
+    def access(self, idx):
+        res = self.seqs[self.offsets[idx]:self.offsets[idx + 1]]
+        return bytes(res)
+    def __getitem__(self, idx):
+        if isinstance(idx, int): return self.access(idx)
+        elif isinstance(idx, slice):
+            return [self.access(x) for x in range(idx.start, idx.stop, idx.step)]
+        else:
+            raise InvalidArgument("PyViewFF can only support slices and integers.")
+    def __len__(self):
+        return self.nseqs
+
+
 __all__ = ["onehot_encode", "cbioseq", "f_encode", "Tokenizer", "tax",
            "make_embedding",
            "bos_tokenizers", "eos_tokenizers", "beos_tokenizers", "pbeos_tokenizers", "peos_tokenizers", "pbos_tokenizers", "pos_tokenizers", "default_tokenizers", "get_tokenizer_dict",
