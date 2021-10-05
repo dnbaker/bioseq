@@ -183,6 +183,9 @@ void init_fxstats(py::module &m) {
             ai = x.nseqs() + idx;
         }
         return x.access(ai);
+    })
+    .def("__getitem__", [](const FlatFile &x, py::slice slc) {
+        return x.range_access(slc);
     });
 
 
