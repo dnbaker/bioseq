@@ -1,7 +1,7 @@
 linear_attention_transformer
 fast_transformer_pytorch
 einops
-x-transformers
+x-transformers>=0.19
 entmax
 product-key-memory
 local-attention
@@ -9,3 +9,4 @@ numpy
 pybind11==2.7.1
 feedback-transformer-pytorch
 memcnn
+e2cnn

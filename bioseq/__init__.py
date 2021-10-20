@@ -8,6 +8,7 @@ import bioseq.softmax as softmax
 import bioseq.loaders as loaders
 import bioseq.annotations as annotations
 import bioseq.blosum as blosum
+import bioseq.lem as lem
 
 """
 bioseq provides tokenizers and utilities for generating embeddings
