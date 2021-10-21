@@ -336,6 +336,28 @@ class XAutoregressiveWrapper(nn.Module):
 
 '''
 
+class RecurrentTransformerWrapper(nn.Module):
+    def __init__(self, net, max_seq_len, window_size):
+        self.net = net
+        self.max_seq_len = max_seq_len
+        self.window_size = window_size
+        self.nchunks = (max_seq_len + window_size -1 ) // window_size
+        assert window_size >= 0
+        assert max_seq_len >= 0
+
+    def forward(self, items, **kwargs):
+        chunked_items = torch.chunk(items, self.nchunks, 1)
+        chunked_output = []
+        chunked_logits = []
+        output, mems = model(chunked_items[0], return_mems=True, return_embeddings=True)
+        for i, chunk in zip(range(1, nchunks), chunked_items[1:]):
+            output, mems = model(chunk, mems=mems, return_mems=True, return_embeddings=True)
+            chunked_output.append(output)
+        output = torch.cat(chunked_output, dim=1)
+        if 'return_embeddings' in kwargs:
+            output = model.to_logits(output)
+        return output
+
 
 class TokenizerLayer(nn.Module):
     def __init__(self, tokenizer, *, padlen, batch_first=True, nthreads=-1, destchar='i'):
