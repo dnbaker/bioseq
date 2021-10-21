@@ -1,5 +1,6 @@
 import sys
 import random
+import collections
 
 
 import bioseq
@@ -337,13 +338,16 @@ class XAutoregressiveWrapper(nn.Module):
 '''
 
 
+
+RecurrentTransformerResult = collections.namedtuple("RecurrentTransformerResult", ["embeddings", "mems", "logits"])
+
 class RecurrentTransformerWrapper(nn.Module):
     def __init__(self, net, max_seq_len):
         super().__init__()
         self.window_size = window_size = net.max_seq_len
         self.net = net
         self.max_seq_len = max_seq_len
-        self.nchunks = (max_seq_len + window_size -1 ) // window_size
+        self.nchunks = (max_seq_len + window_size - 1) // window_size
         assert window_size >= 0
         assert max_seq_len >= 0
 
@@ -359,45 +363,43 @@ class RecurrentTransformerWrapper(nn.Module):
             Remaining kwargs are passed along to the wrapped model's forward call (self.net)
 
             Returns:
-                Dictionary
-                if return_embeddings is true, ret["embeddings"] contains the embeddings.
-                if return_logits is true, ret["logits"] contains the logits.
-                if return_mems is true, ret["mems"] contains the mems.
+                RecurrentTransformerResult - a collections.namedtuple instance
+                with (embeddings, logits, and mems) as fields.
+                If return_{x} is false for x, then that attribute is set as None.
                 The mems are analogous to hidden states of an LSTM Cell.
+
+                embeddings:
+                    (B, T, Emb) where B is batch, T is time/sequence position, and Emb is Embeddings
+                logits:
+                    (B, T, L) where B is batch, T is time/sequence position, and L is logits
+                mems:
+                    (B, Layer, T, Emb) where where B is batch, Layer is the layer of the transformer, T is the time/sequence position, and Emb is Embeddings
+
         """
         chunked_items = torch.chunk(items, self.nchunks, 1)
         chunked_output = []
-        chunked_logits = []
-        return_embeddings = kwargs.pop('return_embeddings', False)
-        return_logits = 1 if not return_embeddings else kwargs.pop('return_logits')
-        return_mems = kwargs.pop("return_mems", False)
         memret = []
         output, mems = self.net(chunked_items[0], return_mems=True, return_embeddings=True, **kwargs)
-        def pmems(mems):
-            if return_mems:
-                memret.append(mems)
+        def pmems_noreturn(mems):
+            pass
+        def pmems_return(mems):
+            memret.append([x[:,-self.window_size:,:] for x in mems])
+        pmems = pmems_return if return_mems else pmems_noreturn
         pmems(mems)
         for i, chunk in zip(range(1, self.nchunks), chunked_items[1:]):
             output, mems = self.net(chunk, mems=mems, return_mems=True, return_embeddings=True, **kwargs)
             pmems(mems)
             chunked_output.append(output)
         embeddings = torch.cat(chunked_output, dim=1)
-        ret = {}
+        ret = {"embeddings": None, "mems": None, "logits": None}
         if return_embeddings:
             ret["embeddings"] = embeddings
         if return_mems:
-            nlayers = len(memret[0])
-            assert set(map(len, memret)) == {len(memret[0])}
-            memlayers = [[] for i in range(nlayers)]
-            for memset in memret:
-                for i, mem in enumerate(memset):
-                    memlayers[i].append(mem)
-            memret = [torch.cat(memlayer, dim=1) for memlayer in memlayers]
-            ret["mems"] = memret
+            ret["mems"] = torch.stack([torch.cat([memret[j][i] for j in range(len(memret))], dim=-2) for i in range(len(memret[0]))], dim=1)
 
         if return_logits:
             ret["logits"] = self.net.to_logits(embeddings)
-        return ret
+        return RecurrentTransformerResult(**ret)
 
 
 class TokenizerLayer(nn.Module):
