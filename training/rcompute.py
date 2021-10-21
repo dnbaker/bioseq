@@ -4,9 +4,9 @@ from time import time
 from datetime import datetime
 
 import bioseq
-from bioseq.decoders import SeqEncoder, HTransformer1D, XDecoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper, RecurrentTransformerWrapper
+from bioseq.decoders import SeqEncoder, HTransformer1D, XDecoder, XAutoregressiveWrapper, FastEncoder, FAutoregressiveWrapper, RecurrentTransformerWrapper, RecurrentAutoregressiveWrapper
 from bioseq.hattn import AutoregressiveWrapper as HAutoregressor
-from x_transformers import TransformerWrapper, Decoder, AutoregressiveWrapper
+from x_transformers import TransformerWrapper, Decoder
 from argparse import ArgumentParser as AP
 import numpy as np
 import torch
@@ -106,7 +106,7 @@ model = TransformerWrapper(num_tokens=tokenizer.alphabet_size(), max_seq_len=arg
 # Then, make recurrenttransformerwrapper which makes this run as if it were a giant transformer model
 model = RecurrentTransformerWrapper(model, max_seq_len=msl)
 # Finally, apply the autoregressivewrapper
-model = AutoregressiveWrapper(model)
+model = RecurrentAutoregressiveWrapper(model)
 if torch.cuda.is_available():
     print("Using CUDA")
     model = model.cuda()
