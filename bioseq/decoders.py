@@ -376,10 +376,14 @@ class RecurrentTransformerWrapper(nn.Module):
                     (B, Layer, T, Emb) where where B is batch, Layer is the layer of the transformer, T is the time/sequence position, and Emb is Embeddings
 
         """
+        mask = kwargs.pop('mask', None)
+        if mask is None:
+            mask = torch.zeros(items.shape[-2], True, dtype=torch.bool, device=items.device)
         chunked_items = torch.chunk(items, self.nchunks, 1)
+        chunked_masks = torch.chunk(mask, self.nchunks)
         chunked_output = []
         memret = []
-        output, mems = self.net(chunked_items[0], return_mems=True, return_embeddings=True, **kwargs)
+        output, mems = self.net(chunked_items[0], return_mems=True, return_embeddings=True, mask=chunked_masks[0], **kwargs)
         def pmems_noreturn(mems):
             pass
         def pmems_return(mems):
@@ -387,7 +391,7 @@ class RecurrentTransformerWrapper(nn.Module):
         pmems = pmems_return if return_mems else pmems_noreturn
         pmems(mems)
         for i, chunk in zip(range(1, self.nchunks), chunked_items[1:]):
-            output, mems = self.net(chunk, mems=mems, return_mems=True, return_embeddings=True, **kwargs)
+            output, mems = self.net(chunk, mems=mems, return_mems=True, return_embeddings=True, mask=chunked_masks[i], **kwargs)
             pmems(mems)
             chunked_output.append(output)
         embeddings = torch.cat(chunked_output, dim=1)

@@ -72,11 +72,6 @@ struct FlatFile {
                 max_seq_len_ = std::max(uint32_t(length(i)), max_seq_len_);
             }
         }
-#ifndef NDEBUG
-        for(size_t i = 0; i < nseqs_; ++i) {
-            std::fprintf(stderr, "Seq %zu is %s\n", i, std::string(offset(i), length(i)).data());
-        }
-#endif
     }
     FlatFile(FlatFile &&o): path_(o.path_), nseqs_(o.nseqs_), seq_offset_(o.seq_offset_), max_seq_len_(o.max_seq_len_) {
         std::swap_ranges((uint8_t *)&data_,(uint8_t *)&data_ + sizeof(data_), (uint8_t *)&o.data_);
@@ -97,9 +92,11 @@ struct FlatFile {
     const char*offset(size_t idx) const {
         return data_.data() + offsets_[idx] + seq_offset_;
     }
-//#define bytearray bytes
     py::list range_access(py::slice slc) const {
-        return range_access(slc.attr("start").cast<py::ssize_t>(), slc.attr("stop").cast<py::ssize_t>(), slc.attr("step").cast<py::ssize_t>());
+        size_t start = 0, stop = 0, step = 0, slicelength = 0;
+        if(!slc.compute(this->nseqs_, &start, &stop, &step, &slicelength))
+            throw py::error_already_set();
+        return range_access(start, stop, step);
     }
     py::array indptr() const {
         py::array ret({{nseqs() + 1}}, offsets_.data());
@@ -108,20 +105,9 @@ struct FlatFile {
         return ret;
     }
     py::list range_access(py::ssize_t i, py::ssize_t j, py::ssize_t step) const {
-        std::fprintf(stderr, "Accessing %zu:%zu with step %zd\n", i, j, step);
         py::list ret;
         if(step == 0) throw std::invalid_argument("step must be nonzero");
-        if(step > 0) {
-            for(py::ssize_t idx = i; idx < j; idx += step) {
-                //std::fprintf(stderr, "Offset accessing %zu\n", idx);
-                //std::fprintf(stderr, "Offset %zu is %zu\n", idx, offsets_[idx]);
-                //std::fprintf(stderr, "Accessing string %s\n", std::string(offset(idx), length(idx)).data());
-                ret.append(py::bytearray(offset(idx), length(idx)));
-            }
-        } else {
-            for(py::ssize_t idx = i; idx > j; idx += step)
-                ret.append(py::bytearray(offset(idx), length(idx)));
-        }
+        for(py::ssize_t idx = i; step > 0 ? idx < j: idx > j; ret.append(access(idx)), idx += step);
         return ret;
     }
     py::bytearray access(size_t i) const {
@@ -174,7 +160,7 @@ void init_fxstats(py::module &m) {
     .def_property_readonly("maxseqlen", &FlatFile::max_seq_len)
     .def_property_readonly("max_seq_len", &FlatFile::max_seq_len)
     .def("__iter__", [](const FlatFile &x) {return FlatFileIterator(x);}, py::keep_alive<0, 1>())
-    .def("__getitem__", [](const FlatFile &x, py::ssize_t idx) {
+    .def("__getitem__", [](const FlatFile &x, py::ssize_t idx) -> py::bytearray {
         py::ssize_t ai;
         if(idx >= 0) {
             ai = idx;
@@ -185,7 +171,7 @@ void init_fxstats(py::module &m) {
         }
         return x.access(ai);
     })
-    .def("__getitem__", [](const FlatFile &x, py::slice slc) {
+    .def("__getitem__", [](const FlatFile &x, py::slice slc) -> py::list {
         return x.range_access(slc);
     });
 

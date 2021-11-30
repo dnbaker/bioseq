@@ -8,15 +8,16 @@ def default(x, y):
     return x if x is not None else y
 
 class ConvBlock1D(nn.Module):
-    def __init__(self, channels, *, kernel_size=3, stride=None, padding=None, groups=1, dilation=1):
+    def __init__(self, channels, outchannels=None, *, kernel_size=3, stride=None, padding=None, groups=1, dilation=1):
+        outchannels = default(outchannels, channels)
         super().__init__()
         stride = default(stride, max(1, (kernel_size // 2) - 1))
         padding = default(padding, max(1, (kernel_size // 2)))
         kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size,)
         self.seq = nn.Sequential(
-                                    nn.Conv1d(in_channels=channels, out_channels=channels,
+                                    nn.Conv1d(in_channels=channels, out_channels=outchannels,
                                               kernel_size=kernel_size, padding=padding),
-                                    nn.BatchNorm1d(num_features=channels),
+                                    nn.BatchNorm1d(num_features=outchannels),
                                     nn.ReLU(inplace=True)
                                 )
 
@@ -28,7 +29,9 @@ def batch_norm(x):
     """match Tensorflow batch norm settings"""
     return nn.BatchNorm1d(x, momentum=0.99, eps=0.001)
 
+
 class RevBottleneck(nn.Module):
+    expansion = 1
     '''
         Adapted from MemCNN's Resnet https://github.com/silvandeleemput/memcnn/blob/afd65198fb41e7339882ec55d35ad041edba13d7/memcnn/models/resnet.py
     '''
@@ -58,7 +61,9 @@ class BottleneckSub(nn.Module):
         Adapted from MemCNN's Resnet https://github.com/silvandeleemput/memcnn/blob/afd65198fb41e7339882ec55d35ad041edba13d7/memcnn/models/resnet.py
         Unlike their class, this increases then decreases the embedding dimension, returning dat of the same shape.
     '''
-    def __init__(self, inchannels, channels, kernel_size=3, stride=1, noactivation=False, expansion=4):
+    def __init__(self, inchannels, channels=None, kernel_size=3, stride=1, noactivation=False, expansion=4):
+        if channels is None:
+            channels = inchannels
         super(BottleneckSub, self).__init__()
         self.noactivation = noactivation
         if not self.noactivation:
@@ -66,13 +71,14 @@ class BottleneckSub(nn.Module):
         self.conv1 = nn.Conv1d(inchannels, channels, kernel_size=1, bias=False)
         self.bn2 = batch_norm(channels)
         self.conv2 = nn.Conv1d(channels, channels, kernel_size=kernel_size, stride=stride,
-                               padding=1, bias=False)
+                               bias=False, padding='same')
         self.bn3 = batch_norm(channels)
-        self.conv3 = nn.Conv1d(channels, channels * expansion, kernel_size=1, bias=False)
+        expanded_channels = channels * expansion
+        self.conv3 = nn.Conv1d(channels, expanded_channels, kernel_size=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
         self.expansion = expansion
-        self.bn4 = batch_norm(channels)
-        self.conv4 = nn.Conv1d(channels * expansion, channels, kernel_size=kernel_size, bias=False)
+        self.bn4 = batch_norm(expanded_channels)
+        self.conv4 = nn.Conv1d(expanded_channels, channels, kernel_size=kernel_size, bias=False, padding='same')
 
     def forward(self, x):
         if not self.noactivation:
@@ -114,6 +120,43 @@ class RevConvBlock1D(nn.Module):
 
     def forward(self, x):
         return self.invmodw(x)
+
+
+class RevConvNetwork1D(nn.Module):
+    def __init__(self, inchannels, channels=None, padding=None, kernel_size=3, revdepth=3, totaldepth=3, noactivation=False):
+        super().__init__()
+        import itertools
+        channels = default(channels, inchannels)
+        layers = [ConvBlock1D(inchannels, channels)]
+        for _ in range(totaldepth):
+            layers.append(RevConvBlock1D(channels, padding=padding, kernel_size=kernel_size, depth=revdepth))
+            layers.append(BottleneckSub(channels, kernel_size=kernel_size, noactivation=noactivation))
+        self.seq = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.seq(x)
+
+
+class RevConvClassifier(nn.Module):
+    def __init__(self, inchannels, num_classes, *, channels=None, padding=None, kernel_size=3, revdepth=3, totaldepth=3, noactivation=False, softmax=None):
+        super().__init__()
+        channels = default(channels, inchannels)
+        self.net = RevConvNetwork1D(inchannels=inchannels, channels=channels, padding=padding, kernel_size=kernel_size, revdepth=revdepth, totaldepth=totaldepth, noactivation=noactivation)
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Linear(channels, num_classes)
+        softmax = default(softmax, nn.Softmax(-1))
+
+    def logits(self, x):
+        '''
+        Returns logits
+        '''
+        embeddings = self.net(x)
+        pooled = self.pool(embeddings).squeeze(-1) # Average across image
+        return self.fc(pooled)
+
+    def forward(self, x):
+        logits = self.logits(x)
+        
 
 
 class ResConvBlock1D(nn.Module):
