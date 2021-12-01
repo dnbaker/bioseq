@@ -151,7 +151,7 @@ class RevConvClassifier(nn.Module):
         Returns logits
         '''
         embeddings = self.net(x)
-        pooled = self.pool(embeddings).squeeze(-1) # Average across image
+        pooled = self.pool(embeddings).squeeze(-1) # Average across data
         return self.fc(pooled)
 
     def forward(self, x):

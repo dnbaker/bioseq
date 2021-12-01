@@ -125,7 +125,6 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
     model.train()
 
     for __ in range(GRADIENT_ACCUMULATE_EVERY):
-        gstart = time()
         nextbatch = next(train_loader).to(torch.long)
         loss = model(nextbatch)
         loss.backward()

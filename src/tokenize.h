@@ -16,9 +16,18 @@ struct Tokenizer {
     // if false, then the pad() character is one-hot encoded for padding sections
 
     size_t full_alphabet_size() const {return ca_->nchars() + include_eos_ + include_bos_ + zero_onehot_pad_;}
-    int bos() const {if(!include_bos_) return -1; return ca_->nchars();}
-    int eos() const {if(!include_eos_) return -1; return bos() + 1;}
-    int pad() const {return eos() + 1;}
+    int bos() const {
+        if(!include_bos_) return -1;
+        return ca_->nchars();
+    }
+    int eos() const {
+        if(!include_eos_) return -1;
+        return ca_->nchars() + include_bos_;
+    }
+    int pad() const {
+        return ca_->nchars() + include_bos_ + include_eos_;
+    }
+
     bool is_padded() const {return zero_onehot_pad_;}
     bool includes_bos() const {return include_bos_;}
     bool includes_eos() const {return include_eos_;}
@@ -82,7 +91,7 @@ struct Tokenizer {
         py::array_t<T> ret;
         const py::ssize_t batchsize = seqs.size();
         const py::ssize_t nc = full_alphabet_size();
-        py::ssize_t nr = padlen + include_bos_ + include_eos_;
+        py::ssize_t nr = padlen; // + include_bos_ + include_eos_;
         const auto mul = nc * nr;
         if(batch_first) {
             ret.resize({batchsize, nr, nc});
@@ -135,14 +144,20 @@ struct Tokenizer {
         }
     }
     template<typename T>
-    py::array_t<T> tokenize(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1) const {
+    py::array_t<T> tokenize(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1, py::object mask=py::none()) const {
         if(padlen <= 0) throw std::invalid_argument("batch tokenize requires padlen is provded.");
         if(nthreads <= 0) nthreads = 1;
         const py::ssize_t nc = full_alphabet_size();
-        py::ssize_t nr = padlen + include_bos_ + include_eos_;
+        py::ssize_t nr = padlen; // + include_bos_ + include_eos_;
         std::vector<std::pair<const char *, size_t>> strs;
+        std::vector<const uint8_t *> maskptrs;
         py::ssize_t nitems = 0;
         for(auto item: items) {
+            const uint8_t *maskptr = 0;
+            if(py::isinstance<py::list>(mask)) {
+                maskptr = getmaskptr(py::cast<py::list>(mask)[nitems]);
+            }
+            maskptrs.push_back(maskptr);
             py::ssize_t size;
             if(py::isinstance<py::str>(item)) {
                 const char *s = PyUnicode_AsUTF8AndSize(item.ptr(), &size);
@@ -183,13 +198,16 @@ struct Tokenizer {
     #pragma omp parallel for num_threads(nthreads)
 #endif
         for(size_t i = 0; i < strs.size(); ++i) {
+            const auto maskptr = maskptrs[i];
             const auto &seq(strs[i]);
             if(include_bos_) {
                 __access(0, i, bos()) = 1;
             }
             for(size_t j = 0; j < seq.second; ++j) {
-                auto tr = ca_->translate(seq.first[j]);
-                __access((include_bos_ + j), i, tr) = 1;
+                if(!maskptr || maskptr[j]) {
+                    const auto tr = ca_->translate(seq.first[j]);
+                    __access((include_bos_ + j), i, tr) = 1;
+                }
             }
             if(include_eos_) {
                 __access((include_bos_ + seq.second), i, eos()) = 1;
@@ -207,15 +225,30 @@ struct Tokenizer {
         }
         return ret;
     }
+    static const uint8_t *getmaskptr(py::object mask) {
+        const uint8_t *maskptr = 0;
+        if(py::isinstance<py::array>(mask)) {
+            py::array_t<uint8_t, py::array::forcecast> arr(mask);
+            auto inf = arr.request();
+            maskptr = (const uint8_t *)inf.ptr;
+        }
+        return maskptr;
+    }
     template<typename T>
-    py::object transencode(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1) const {
+    py::object transencode(py::sequence items, py::ssize_t padlen=-1, bool batch_first = false, py::ssize_t nthreads = 1, py::object mask=py::none()) const {
         if(padlen <= 0) throw std::invalid_argument("batch tokenize requires padlen is provded.");
         if(nthreads <= 0) nthreads = 1;
-        py::ssize_t nr = padlen + include_bos_ + include_eos_;
+        py::ssize_t nr = padlen; // + include_bos_ + include_eos_;
         std::vector<std::pair<const char *, size_t>> strs;
+        std::vector<const uint8_t *> maskptrs;
         py::ssize_t nitems = 0;
         for(auto item: items) {
+            const uint8_t *maskptr = 0;
             py::ssize_t size;
+            if(py::isinstance<py::list>(mask)) {
+                maskptr = getmaskptr(py::cast<py::list>(mask)[nitems]);
+            }
+            maskptrs.push_back(maskptr);
             if(py::isinstance<py::str>(item)) {
                 const char *s = PyUnicode_AsUTF8AndSize(item.ptr(), &size);
                 strs.push_back({s, size});
@@ -283,16 +316,21 @@ struct Tokenizer {
             if(include_bos_) {
                 __assign(0, i, bos());
             }
+            const auto maskptr = maskptrs[i];
             for(size_t j = 0; j < seq.second; ++j) {
                 auto tr = ca_->translate(seq.first[j]);
-                __assign((include_bos_ + j), i, tr);
+                if(!maskptr || maskptr[j]) {
+                    __assign((include_bos_ + j), i, tr);
+                }
             }
             if(include_eos_) {
                 __assign((include_bos_ + seq.second), i, eos());
             }
-            for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
-            {
-                __assign(k++, i, pad());
+            if(zero_onehot_pad_) {
+                for(py::ssize_t k = seq.second + include_bos_ + include_eos_; k < padlen;)
+                {
+                    __assign(k++, i, pad());
+                }
             }
         }
         return ret;

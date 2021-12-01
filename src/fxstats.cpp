@@ -96,6 +96,9 @@ struct FlatFile {
         size_t start = 0, stop = 0, step = 0, slicelength = 0;
         if(!slc.compute(this->nseqs_, &start, &stop, &step, &slicelength))
             throw py::error_already_set();
+#ifndef NDEBUG
+        std::fprintf(stderr, "Start, stop, step %zd %zd %zd\n", start, stop, step);
+#endif
         return range_access(start, stop, step);
     }
     py::array indptr() const {
