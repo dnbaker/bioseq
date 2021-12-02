@@ -17,6 +17,7 @@ import tqdm
 
 import bioseq
 import bioseq.cnnencoder as cnn
+from bioseq.cnnencoder import RevConvInfiller
 from bioseq.blosum import augment_seq
 
 
@@ -76,23 +77,11 @@ except KeyError:
 
 # print("tokenizer eos: ", tokenizer.eos(), "bos", tokenizer.bos(), "padchar", tokenizer.pad(), "is padded", tokenizer.is_padded())
 
-class RevConvInfiller(nn.Module):
-    def __init__(self, net, tokenizer):
-        super().__init__()
-        self.net = net
-        self.tokenizer = tokenizer
-        self.fc = nn.Linear(ap.emb_dim, tokenizer.alphabet_size())
-    def forward(self, x):
-        emb = self.net(x)
-        logits = self.fc(emb.transpose(2, 1))
-        return emb, logits
-
-
 pl = padlen = ff.maxseqlen + tokenizer.includes_eos() + tokenizer.includes_bos()
 inchannels = tokenizer.alphabet_size()
 # print("Alphabet size: ", inchannels)
 model = cnn.RevConvNetwork1D(inchannels, channels=ap.emb_dim, kernel_size=ap.kernel_size, revdepth=ap.revdepth, totaldepth=ap.totaldepth, noactivation=ap.noactivation)
-model = RevConvInfiller(model, tokenizer).to(device)
+model = RevConvInfiller(model, tokenizer, ap.emb_dim).to(device)
 if usecuda:
     model = nn.DataParallel(model)
 optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -179,7 +168,7 @@ for bn in range(NUM_BATCHES):
             saved_loss_id += 1
     optim.step()
     optim.zero_grad()
-    
+
 tend = time()
 np.array(losses).astype(np.float32).tofile(f"model.{random_name}.final.losses.f32")
 torch.save(model, f"model.{random_name}.final.pt")

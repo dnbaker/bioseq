@@ -156,7 +156,7 @@ class RevConvClassifier(nn.Module):
 
     def forward(self, x):
         logits = self.logits(x)
-        
+
 
 
 class ResConvBlock1D(nn.Module):
@@ -178,3 +178,13 @@ class ResConvBlock1D(nn.Module):
             res = self.downsample(x)
         out += res
         return out
+
+class RevConvInfiller(nn.Module):
+    def __init__(self, net, tokenizer, embdim):
+        super().__init__()
+        self.net = net
+        self.tokenizer = tokenizer
+        self.fc = nn.Linear(embdim, tokenizer.alphabet_size())
+    def forward(self, x):
+        emb = self.net(x)
+        return emb, self.fc(emb.transpose(2, 1))

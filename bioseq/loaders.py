@@ -24,7 +24,7 @@ def FF2NP(x, tokenizer, destfile, *, batch_size=8192):
         retmat[start:stop] = tokenizer.batch_tokenize(
             seqs, padlen=msl, batch_first=True, destchar='B')
     return (retmat, destfile)
-        
+
 
 class FlatFileDataset(torch.utils.data.Dataset):
     """
