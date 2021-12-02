@@ -33,20 +33,20 @@ X  0 -1 -1 -1 -2 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2  0  0 -2 -1 -1 -1 -1 -1 -4
 * -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4  1'''
 
 
-true_aas = 'ARNDCQEGHILKMFPSTWYV'
+true_aas = 'ARNDCQEGHILKMFPSTWYVX'
 blosum_data = np.array([list(map(int, x.strip().split()[1:])) for x in BLOSUM_TEXT.split('\n')[1:]])
 amine_chrs = "".join(x.split()[0] for x in BLOSUM_TEXT.split('\n')[1:])
 true_idx = [i for i, x in enumerate(amine_chrs) if x in true_aas]
-blosum_specific = blosum_data[np.ix_(true_idx, true_idx)]
+blosum_specific = blosum_data[np.ix_(true_idx, true_idx[:-1])]
 blosum_odds = np.exp2(blosum_specific)
 rowsums = np.sum(blosum_odds, axis=1)
 normrows = blosum_odds / rowsums[:,np.newaxis]
-ca = np.array(list(true_aas))
+ca = np.array(list(true_aas))[:-1]
 
 aa_array = ca
 
-#print(Counter(substituters['H'](1000)))
 probdict = {k: normrows[idx].copy() for idx, k in enumerate(true_aas)}
+default_transitions = probdict['X']
 substituters = {}
 def substitute(inchar, size=1):
     '''
@@ -57,7 +57,7 @@ def substitute(inchar, size=1):
         Used for generating new sequences for augmentation.
         Transitions are based on BLOSUM62 scores.
     '''
-    return rng.choice(ca, p=probdict[inchar], size=size, replace=True)
+    return rng.choice(ca, p=probdict.get(inchar, default_transitions), size=size, replace=True)
 
 
 def augment_seq(inseq, chain_len=1):
