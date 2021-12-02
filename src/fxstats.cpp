@@ -92,6 +92,16 @@ struct FlatFile {
     const char*offset(size_t idx) const {
         return data_.data() + offsets_[idx] + seq_offset_;
     }
+    py::list range_access(py::array idx) const {
+        py::array_t<uint64_t, py::array::forcecast> ids(idx);
+        py::list ret;
+        auto bi = ids.request();
+        const uint64_t *ptr = (const uint64_t *)bi.ptr;
+        for(py:ssize_t i = 0; i < bi.size; ++i) {
+            ret.append(access(ptr[i]));
+        }
+        return ret;
+    }
     py::list range_access(py::slice slc) const {
         size_t start = 0, stop = 0, step = 0, slicelength = 0;
         if(!slc.compute(this->nseqs_, &start, &stop, &step, &slicelength))
@@ -176,6 +186,9 @@ void init_fxstats(py::module &m) {
     })
     .def("__getitem__", [](const FlatFile &x, py::slice slc) -> py::list {
         return x.range_access(slc);
+    })
+    .def("__getitem__", [](const FlatFile &x, py::array arr) -> py::list {
+        return x.range_access(arr);
     });
 
 

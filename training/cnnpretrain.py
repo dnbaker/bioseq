@@ -172,17 +172,15 @@ for bn in range(NUM_BATCHES):
         loss.backward()
         finished_seqs += len(seqs)
 
-    if not (bn & 7):
+    if not (bn & 127):
         print(f'[Batch {bn}] training loss: {loss.item()} after {time() - tstart}s after {finished_seqs} sequences; mean of last 10 {np.mean(losses[-10:])}', flush=True)
         if finished_seqs >= len(seqs):
-            ofn = f"saved_loss.{random_name}.{saved_loss_id}"
             torch.save(model, f"model.{random_name}.{saved_loss_id}.pt")
             saved_loss_id += 1
-            np.array(losses)[:len(ff)].astype(np.float32).tofile(ofn)
-            losses = losses[finished_seqs:]
     optim.step()
     optim.zero_grad()
     
 tend = time()
+np.array(losses).astype(np.float32).tofile(f"model.{random_name}.final.losses.f32")
 torch.save(model, f"model.{random_name}.final.pt")
 print("Training took %gs" % (tend - tstart))
