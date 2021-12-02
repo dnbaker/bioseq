@@ -97,7 +97,7 @@ struct FlatFile {
         py::list ret;
         auto bi = ids.request();
         const uint64_t *ptr = (const uint64_t *)bi.ptr;
-        for(py:ssize_t i = 0; i < bi.size; ++i) {
+        for(py::ssize_t i = 0; i < bi.size; ++i) {
             ret.append(access(ptr[i]));
         }
         return ret;
