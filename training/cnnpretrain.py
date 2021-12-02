@@ -54,11 +54,9 @@ if nt < 0:
     nt = CC()
 torch.set_num_threads(nt)
 LEARNING_RATE = ap.learning_rate
-
-if ap.seed:
-    torch.manual_seed(ap.seed)
-    np.random.seed(ap.seed)
-    random.seed(ap.seed)
+torch.manual_seed(ap.seed)
+np.random.seed(ap.seed)
+random.seed(ap.seed)
 
 
 ff = None
@@ -95,6 +93,8 @@ inchannels = tokenizer.alphabet_size()
 # print("Alphabet size: ", inchannels)
 model = cnn.RevConvNetwork1D(inchannels, channels=ap.emb_dim, kernel_size=ap.kernel_size, revdepth=ap.revdepth, totaldepth=ap.totaldepth, noactivation=ap.noactivation)
 model = RevConvInfiller(model, tokenizer).to(device)
+if usecuda:
+    model = nn.DataParallel(model)
 optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 ffl = bioseq.loaders.FlatFileDataset(ff, tokenizer, augment=ap.augment, augment_frac=ap.augment_frac, cnn=True, device=device)
 NUM_BATCHES  = int((ap.nepochs * len(ffl) + ap.accumfreq * ap.batchsize - 1) / (ap.accumfreq * ap.batchsize))
@@ -110,7 +110,7 @@ def cycle(x):
 
 random_name = "".join(random.choice("abcdefghijklmn") for x in range(10)) + hex(reduce(lambda x, y: x ^ hash(y), sys.argv, 0))
 
-train_loader = cycle(DataLoader(ffl, batch_size=ap.batchsize))
+# train_loader = cycle(DataLoader(ffl, batch_size=ap.batchsize))
 
 assert 1. > ap.maskfrac > 0.
 
@@ -121,8 +121,7 @@ bstart = 0
 PL = ff.maxseqlen + tokenizer.includes_eos() + tokenizer.includes_bos()
 def getbatch():
     global bstart
-    slc = slice(bstart, bstart + ap.batchsize)
-    seqs = ff[slc]
+    seqs = ff[bstart:bstart + ap.batchsize]
     LS = len(seqs)
     augmented_seq_indexes = np.where(np.random.rand(LS) < ap.augment_frac)[0] if ap.augment else []
     for idx in augmented_seq_indexes:
@@ -154,16 +153,17 @@ for bn in range(NUM_BATCHES):
         stackmask = torch.logical_not(masks)
         assert moh.device == device
         emb, bo = model(moh)
-        tokens = torch.from_numpy(tokenizer.batch_tokenize(seqs, padlen=PL)).long().to(device)
+        tokens = torch.from_numpy(tokenizer.batch_tokenize(seqs, padlen=PL)).to(device).long()
         # print("tokens shape", tokens.shape, stackmask.shape)
-        if 1:
+        '''
+        if 0:
             where = torch.where(stackmask)
             seltoks = tokens[startpos:tstop,:][stackmask.T].to(device).long()
             bot = bo[:,startpos:tstop,:][stackmask]
             loss = F.cross_entropy(bot, seltoks)
         else:
-            #print(bo.shape, tokens.shape, torch.max(tokens))
-            loss = F.cross_entropy(bo.transpose(1, 2), tokens.T)
+        '''
+        loss = F.cross_entropy(bo.transpose(1, 2), tokens.T)
         losses.append(float(loss.item()))
         # sys.exit(1)
         # Now, loss function for masked items
@@ -172,15 +172,17 @@ for bn in range(NUM_BATCHES):
         loss.backward()
         finished_seqs += len(seqs)
 
-    if not (bn & 0x7):
-        print(f'training loss: {loss.item()} after {time() - tstart}s after {finished_seqs} sequences')
-        if len(losses) >= len(ff):
-            ofn = "saved_loss.{random_name}.{saved_loss_id}"
+    if not (bn & 7):
+        print(f'[Batch {bn}] training loss: {loss.item()} after {time() - tstart}s after {finished_seqs} sequences; mean of last 10 {np.mean(losses[-10:])}', flush=True)
+        if finished_seqs >= len(seqs):
+            ofn = f"saved_loss.{random_name}.{saved_loss_id}"
+            torch.save(model, f"model.{random_name}.{saved_loss_id}.pt")
             saved_loss_id += 1
             np.array(losses)[:len(ff)].astype(np.float32).tofile(ofn)
-            losses = losses[len(finished_seqs):]
+            losses = losses[finished_seqs:]
     optim.step()
     optim.zero_grad()
     
 tend = time()
+torch.save(model, f"model.{random_name}.final.pt")
 print("Training took %gs" % (tend - tstart))

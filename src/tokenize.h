@@ -189,11 +189,16 @@ struct Tokenizer {
         py::array_t<T> ret(std::vector<py::ssize_t>({nr, nitems, nc})); // T B C
         const auto nrc = nitems * nc;
 #define __access(seqind, batchind, charind) \
-        assert((seqind) * nrc + (batchind) * nc + (charind) < nr * nitems * nc);\
+        assert((seqind) * nrc + (batchind) * nc + (charind) < nr * nitems * nc || !std::fprintf(stderr, "seqlen %zu, batchind %zu, charind %zu %s", seqind, batchind, charind, seq.first));\
         ptr[(seqind) * nrc + (batchind) * nc + (charind)]
         py::buffer_info bi = ret.request();
         std::memset(bi.ptr, 0, sizeof(T) * nitems * nr * nc);
         T *ptr = (T *)bi.ptr;
+#ifndef NDEBUG
+        for(size_t i = 0; i < strs.size(); ++i) {
+            assert(strs[i].second + include_bos_ + include_eos_ <= nr);
+        }
+#endif
 #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthreads)
 #endif
@@ -206,7 +211,9 @@ struct Tokenizer {
             for(size_t j = 0; j < seq.second; ++j) {
                 if(!maskptr || maskptr[j]) {
                     const auto tr = ca_->translate(seq.first[j]);
-                    __access((include_bos_ + j), i, tr) = 1;
+                    if(tr >= 0) {
+                        __access((include_bos_ + j), i, tr) = 1;
+                    }
                 }
             }
             if(include_eos_) {
