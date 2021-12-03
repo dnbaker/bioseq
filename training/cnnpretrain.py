@@ -43,11 +43,14 @@ aa("--kernel-size", type=int, default=9)
 aa("--nepochs", type=float, default=1)
 aa("--maskfrac", type=float, default=0.15)
 aa("--seed", type=int, default=0)
+aa("--number-models-saved", type=int, default=10)
+aa("--predict-all", action='store_true', help="Predict all residues instead of just the masked ones.")
 
 usecuda = torch.cuda.is_available()
 device = torch.device("cuda:0") if usecuda else torch.device("cpu")
 
 ap = ap.parse_args()
+NSAVES = ap.number_models_saved
 args = ap
 nt = ap.nthreads
 if nt < 0:
@@ -87,6 +90,7 @@ if usecuda:
 optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 ffl = bioseq.loaders.FlatFileDataset(ff, tokenizer, augment=ap.augment, augment_frac=ap.augment_frac, cnn=True, device=device)
 NUM_BATCHES  = int((ap.nepochs * len(ffl) + ap.accumfreq * ap.batchsize - 1) / (ap.accumfreq * ap.batchsize))
+BATCH_SAVE_FREQ = NUM_BATCHES // NSAVES
 
 def load_next(batch):
     oh = tokenizer.batch_onehot_encode(batch, padlen=pl)
@@ -97,7 +101,8 @@ def cycle(x):
     while 1:
         yield from x
 
-random_name = "".join(random.choice("abcdefghijklmn") for x in range(10)) + hex(reduce(lambda x, y: x ^ hash(y), sys.argv, 0))
+RANDOMKEY = hex(reduce(lambda x, y: x ^ hash(y), sys.argv, 0))
+random_name = RANDOMKEY
 
 # train_loader = cycle(DataLoader(ffl, batch_size=ap.batchsize))
 
@@ -143,29 +148,24 @@ for bn in range(NUM_BATCHES):
         assert moh.device == device
         emb, bo = model(moh)
         tokens = torch.from_numpy(tokenizer.batch_tokenize(seqs, padlen=PL)).to(device).long()
-        # print("tokens shape", tokens.shape, stackmask.shape)
-        '''
-        if 0:
+        # This will simply be the MASS objective.
+        # Coming back around, it would benefit from turning it to the autoregressive loss
+        if ap.predict_all:
+            loss = F.cross_entropy(bo.transpose(1, 2), tokens.T, reduction='sum')
+        else:
             where = torch.where(stackmask)
             seltoks = tokens[startpos:tstop,:][stackmask.T].to(device).long()
             bot = bo[:,startpos:tstop,:][stackmask]
             loss = F.cross_entropy(bot, seltoks)
-        else:
-        '''
-        loss = F.cross_entropy(bo.transpose(1, 2), tokens.T)
         losses.append(float(loss.item()))
-        # sys.exit(1)
-        # Now, loss function for masked items
-        # This will simply be the MASS objective.
-        # Coming back around, it would benefit from turning it to the autoregressive loss
         loss.backward()
         finished_seqs += len(seqs)
 
-    if not (bn & 127):
+    if bn % BATCH_SAVE_FREQ == 0:
+        torch.save(model, f"model.{random_name}.{saved_loss_id}.pt")
+        saved_loss_id += 1
+    if not (bn & 31):
         print(f'[Batch {bn}] training loss: {loss.item()} after {time() - tstart}s after {finished_seqs} sequences; mean of last 10 {np.mean(losses[-10:])}', flush=True)
-        if finished_seqs >= len(seqs):
-            torch.save(model, f"model.{random_name}.{saved_loss_id}.pt")
-            saved_loss_id += 1
     optim.step()
     optim.zero_grad()
 
