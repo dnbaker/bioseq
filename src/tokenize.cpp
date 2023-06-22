@@ -43,6 +43,15 @@ void init_tokenize(py::module &m) {
             throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
         return ret;
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
+    .def("decode_tokens", [](const Tokenizer& tok, py::array array) {
+        return tok.decode_tokens_to_string(array);
+    })
+    .def("token_map", [](const Tokenizer& tok) {
+        return tok.token_map();
+    })
+    .def("nchars", [](const Tokenizer& tok) {
+        return tok.nchars();
+    })
     // batched one-hot encoding
     .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, int nthreads, py::object mask) -> py::object {
         switch(std::tolower(dt[0])) {
