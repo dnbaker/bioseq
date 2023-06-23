@@ -46,6 +46,9 @@ void init_tokenize(py::module &m) {
     .def("decode_tokens", [](const Tokenizer& tok, py::array array) {
         return tok.decode_tokens_to_string(array);
     })
+    .def("lut", [](const Tokenizer& tok) {
+        return tok.lookup;
+    })
     .def("token_map", [](const Tokenizer& tok) {
         return tok.token_map();
     })

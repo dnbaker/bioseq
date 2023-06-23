@@ -37,8 +37,6 @@ struct Tokenizer {
     int nchars() const noexcept {return ca_->nchars();}
     // Always included: padding
     Tokenizer(const Alphabet &ca, bool eos=false, bool bos=false, bool zero_onehot_pad=false): ca_(&ca), include_eos_(eos), include_bos_(bos), zero_onehot_pad_(zero_onehot_pad) {
-        decode.resize(ca.nchars());
-        std::fprintf(stderr, "decode: %zu size \n", decode.size());
         for(int32_t i = 0, e = ca.lut.size(); i < e; ++i) {
             const char value = ca.lut[i];
             if(!lookup.contains(value)) {
@@ -48,7 +46,7 @@ struct Tokenizer {
         if(includes_bos()) {
             lookup[this->bos()] = "<BOS>";
         }
-        if(include_eos()) {
+        if(includes_eos()) {
             lookup[this->eos()] = "<EOS>";
         }
         if(is_padded()) {
@@ -71,6 +69,28 @@ struct Tokenizer {
             throw std::runtime_error(std::string("Invalid tokenizer type; select one from") + options);
         }
         ca_ = it->second;
+        const auto& ca = *ca_;
+        for(int32_t i = 0, e = ca.lut.size(); i < e; ++i) {
+            const char value = ca.lut[i];
+            if(!lookup.contains(value)) {
+                lookup[value] = std::string(1, static_cast<char>(i));
+            }
+        }
+        if(includes_bos()) {
+            lookup[this->bos()] = "<BOS>";
+        }
+        if(includes_eos()) {
+            lookup[this->eos()] = "<EOS>";
+        }
+        if(is_padded()) {
+            lookup[pad()] = "<PAD>";
+        }
+        for(const auto& pair: lookup) {
+            token_map_str += std::to_string(pair.first) + ':' + pair.second;
+            token_map_str += ';';
+        }
+        if(!token_map_str.empty())
+            token_map_str.pop_back();
     }
     static uint64_t load_value(const uint8_t* const data, const int64_t bytes) {
         switch(bytes) {
@@ -89,6 +109,12 @@ struct Tokenizer {
             default: ;
         }
         throw std::runtime_error(std::string("Unexpected itemsize: expected 1, 2, 4, or 8. Found ") + std::to_string(bytes));
+    }
+    static void trim_to_eos(std::string& x) {
+        const auto pos = x.find("<EOS>");
+        if(pos != std::string::npos) {
+            x.resize(pos + 5);
+        }
     }
     py::object decode_tokens(const py::buffer_info& info) const {
         if(info.ptr == nullptr) {
@@ -111,25 +137,31 @@ struct Tokenizer {
                 }
                 oss << it->second;
             }
+            std::string ret = oss.str();
+            // trim_to_eos(ret);
             return py::str(oss.str());
         }
         // ndim == 2
         py::list ret;
+
         const int64_t nrows = info.shape[0];
         const int64_t ncols = info.shape[1];
-        const int64_t rowStride = info.strides[1];
+        const int64_t rowStride = info.strides[0];
+        const int64_t colStride = info.strides[1];
         for(int64_t row = 0; row < nrows; ++row) {
             std::ostringstream oss;
-            const uint8_t* data_ptr = static_cast<const uint8_t *>(info.ptr) + info.strides[0] * row;
+            const uint8_t* data_ptr = static_cast<const uint8_t *>(info.ptr) + rowStride * row;
             for(int64_t col = 0; col < ncols; ++col) {
-                const uint32_t value = load_value(data_ptr + rowStride, info.itemsize);
+                const uint32_t value = load_value(data_ptr + col * colStride, info.itemsize);
                 const auto it = lookup.find(value);
                 if(it == lookup.end()) {
                     throw std::runtime_error(std::string("Unexpected/invalid token ") + std::to_string(value));
                 }
                 oss << it->second;
             }
-            ret.append(py::str(oss.str()));
+            std::string next = oss.str();
+            // trim_to_eos(next);
+            ret.append(py::str(next));
         }
         return ret;
     }
