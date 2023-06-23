@@ -1,9 +1,9 @@
 import cbioseq
 from cbioseq import *
-from .tax import get_taxid
-import bioseq.tax as tax
-import bioseq.decoders as decoders
-import bioseq.hattn as hattn
+#from .tax import get_taxid
+#import bioseq.tax as tax
+#import bioseq.decoders as decoders
+#import bioseq.hattn as hattn
 import bioseq.softmax as softmax
 import bioseq.loaders as loaders
 import bioseq.annotations as annotations

@@ -4,16 +4,14 @@
 inline __attribute__((always_inline))
 py::object tokenize(const Tokenizer &tok, const char *s, const py::ssize_t size, const py::ssize_t padlen, const std::string dt) {
     py::object ret = py::none();
-    if(dt[0] == 'B' || dt[0] == 'b')
-        ret = tok.tokenize<uint8_t>(s, size, padlen);
-    if(dt[0] == 'h' || dt[0] == 'H')
-        ret = tok.tokenize<uint16_t>(s, size, padlen);
-    if(dt[0] == 'i' || dt[0] == 'I')
-        ret = tok.tokenize<uint32_t>(s, size, padlen);
-    if(dt[0] == 'f')
-        ret = tok.tokenize<float>(s, size, padlen);
-    if(dt[0] == 'd')
-        ret = tok.tokenize<double>(s, size, padlen);
+    switch(dt[0] & 223) { // remove case from character by removing bit 0b100000 == 32
+        case 'B': ret = tok.tokenize<uint8_t>(s, size, padlen); break;
+        case 'H': ret = tok.tokenize<uint16_t>(s, size, padlen); break;
+        case 'I': ret = tok.tokenize<uint32_t>(s, size, padlen); break;
+        case 'F': ret = tok.tokenize<float>(s, size, padlen); break;
+        case 'D': ret = tok.tokenize<double>(s, size, padlen); break;
+        default: ; // Else, return None
+    }
     return ret;
 }
 
@@ -45,6 +43,18 @@ void init_tokenize(py::module &m) {
             throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
         return ret;
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
+    .def("decode_tokens", [](const Tokenizer& tok, py::array array) {
+        return tok.decode_tokens_to_string(array);
+    })
+    .def("lut", [](const Tokenizer& tok) {
+        return tok.lookup;
+    })
+    .def("token_map", [](const Tokenizer& tok) {
+        return tok.token_map();
+    })
+    .def("nchars", [](const Tokenizer& tok) {
+        return tok.nchars();
+    })
     // batched one-hot encoding
     .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, int nthreads, py::object mask) -> py::object {
         switch(std::tolower(dt[0])) {

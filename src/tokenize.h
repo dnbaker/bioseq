@@ -2,6 +2,7 @@
 #include "alphabet.h"
 #include "pybind11/numpy.h"
 #include <string>
+#include <sstream>
 
 using namespace alph;
 
@@ -11,6 +12,8 @@ struct Tokenizer {
     const bool include_bos_;
     const bool zero_onehot_pad_;
     std::string key;
+    std::unordered_map<int32_t, std::string> lookup;
+    std::string token_map_str;
     // Whether to pad with all 0s (instead of one-hot encoding with a wholly new character for 'padding')
     // If true, then trailing sections are left as all 0s
     // if false, then the pad() character is one-hot encoded for padding sections
@@ -31,9 +34,32 @@ struct Tokenizer {
     bool is_padded() const {return zero_onehot_pad_;}
     bool includes_bos() const {return include_bos_;}
     bool includes_eos() const {return include_eos_;}
+    int nchars() const noexcept {return ca_->nchars();}
     // Always included: padding
     Tokenizer(const Alphabet &ca, bool eos=false, bool bos=false, bool zero_onehot_pad=false): ca_(&ca), include_eos_(eos), include_bos_(bos), zero_onehot_pad_(zero_onehot_pad) {
+        for(int32_t i = 0, e = ca.lut.size(); i < e; ++i) {
+            const char value = ca.lut[i];
+            if(!lookup.contains(value)) {
+                lookup[value] = std::string(1, static_cast<char>(i));
+            }
+        }
+        if(includes_bos()) {
+            lookup[this->bos()] = "<BOS>";
+        }
+        if(includes_eos()) {
+            lookup[this->eos()] = "<EOS>";
+        }
+        if(is_padded()) {
+            lookup[pad()] = "<PAD>";
+        }
+        for(const auto& pair: lookup) {
+            token_map_str += std::to_string(pair.first) + ':' + pair.second;
+            token_map_str += ';';
+        }
+        if(!token_map_str.empty())
+            token_map_str.pop_back();
     }
+    std::string token_map() const noexcept {return token_map_str;}
     Tokenizer(std::string key_, bool include_eos, bool include_bos, bool zohpad): include_eos_(include_eos), include_bos_(include_bos), zero_onehot_pad_(zohpad), key(key_) {
         std::transform(key.begin(), key.end(), key.begin(),[](auto x){return std::toupper(x);});
         auto it = CAMAP.find(key);
@@ -43,6 +69,105 @@ struct Tokenizer {
             throw std::runtime_error(std::string("Invalid tokenizer type; select one from") + options);
         }
         ca_ = it->second;
+        const auto& ca = *ca_;
+        for(int32_t i = 0, e = ca.lut.size(); i < e; ++i) {
+            const char value = ca.lut[i];
+            if(!lookup.contains(value)) {
+                lookup[value] = std::string(1, static_cast<char>(i));
+            }
+        }
+        if(includes_bos()) {
+            lookup[this->bos()] = "<BOS>";
+        }
+        if(includes_eos()) {
+            lookup[this->eos()] = "<EOS>";
+        }
+        if(is_padded()) {
+            lookup[pad()] = "<PAD>";
+        }
+        for(const auto& pair: lookup) {
+            token_map_str += std::to_string(pair.first) + ':' + pair.second;
+            token_map_str += ';';
+        }
+        if(!token_map_str.empty())
+            token_map_str.pop_back();
+    }
+    static uint64_t load_value(const uint8_t* const data, const int64_t bytes) {
+        switch(bytes) {
+            case 1: {
+                return *data;
+            }
+            case 2: {
+                return *static_cast<const uint16_t*>(static_cast<const void *>(data));
+            }
+            case 4: {
+                return *static_cast<const uint32_t*>(static_cast<const void *>(data));
+            }
+            case 8: {
+                return *static_cast<const uint64_t*>(static_cast<const void *>(data));
+            }
+            default: ;
+        }
+        throw std::runtime_error(std::string("Unexpected itemsize: expected 1, 2, 4, or 8. Found ") + std::to_string(bytes));
+    }
+    static void trim_to_eos(std::string& x) {
+        const auto pos = x.find("<EOS>");
+        if(pos != std::string::npos) {
+            x.resize(pos + 5);
+        }
+    }
+    py::object decode_tokens(const py::buffer_info& info, const bool trim=false) const {
+        if(info.ptr == nullptr) {
+            throw std::invalid_argument("Empty array cannot yield a decoded string");
+        }
+        const int32_t ndim = info.ndim;
+        if((ndim > 2) || (ndim == 0)) {
+            throw std::invalid_argument("Currently supported: 1 or 2 dimensions for decoding tokens.");
+        }
+        if(ndim == 1) {
+            std::ostringstream oss;
+            const uint8_t* data_ptr = static_cast<const uint8_t *>(info.ptr);
+            const int64_t stride = info.strides[0];
+            const uint8_t* const end_ptr = static_cast<const uint8_t *>(info.ptr) + (stride * info.size);
+            for(;data_ptr < end_ptr; data_ptr += stride) {
+                const uint32_t value = load_value(data_ptr, info.itemsize);
+                const auto it = lookup.find(value);
+                if(it == lookup.end()) {
+                    throw std::runtime_error(std::string("Unexpected/invalid token ") + std::to_string(value));
+                }
+                oss << it->second;
+            }
+            std::string ret = oss.str();
+            if(trim) trim_to_eos(ret);
+            return py::str(oss.str());
+        }
+        // ndim == 2
+        py::list ret;
+
+        const int64_t nrows = info.shape[0];
+        const int64_t ncols = info.shape[1];
+        const int64_t rowStride = info.strides[0];
+        const int64_t colStride = info.strides[1];
+        for(int64_t row = 0; row < nrows; ++row) {
+            std::ostringstream oss;
+            const uint8_t* data_ptr = static_cast<const uint8_t *>(info.ptr) + rowStride * row;
+            for(int64_t col = 0; col < ncols; ++col) {
+                const uint32_t value = load_value(data_ptr + col * colStride, info.itemsize);
+                const auto it = lookup.find(value);
+                if(it == lookup.end()) {
+                    throw std::runtime_error(std::string("Unexpected/invalid token ") + std::to_string(value));
+                }
+                oss << it->second;
+            }
+            std::string next = oss.str();
+            if(trim) {trim_to_eos(ret);}
+            ret.append(py::str(next));
+        }
+        return ret;
+    }
+    py::object decode_tokens_to_string(py::array array) const {
+        py::buffer_info bi = array.request();
+        return decode_tokens(bi);
     }
     template<typename T>
     py::array_t<T> tokenize(const std::string &seq, py::ssize_t padlen=0) const {

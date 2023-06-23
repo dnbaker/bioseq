@@ -3,6 +3,7 @@ from sys import platform
 from setuptools.command.build_ext import build_ext
 from glob import glob
 import multiprocessing
+import subprocess
 
 
 class get_pybind_include(object):
@@ -44,14 +45,16 @@ def cpp_flag(compiler):
     raise RuntimeError('Unsupported compiler -- at least C++11 support '
                        'is needed!')
 
+#full_gomp_path = subprocess.check_output("realpath `$CXX --print-file-name=libgomp.a`", shell=True).decode('utf-8')
+
 extra_compile_args = ['-march=native',
                       '-Wno-char-subscripts', '-Wno-unused-function', '-Wno-ignored-qualifiers',
                       '-Wno-strict-aliasing', '-Wno-ignored-attributes', '-fno-wrapv',
                       '-Wall', '-Wextra', '-Wformat',
-                      '-lz', '-fopenmp', "-lgomp",
-                      "-pipe", '-O3', '-DNDEBUG']
+                      '-lz', '-fopenmp',
+                      "-pipe", '-O0', '-DNDEBUG']
 
-extra_link_opts = ["-fopenmp", "-lgomp", "-lz"]
+extra_link_opts = ["-fopenmp", "-lz", "-lgomp"]
 
 
 class BuildExt(build_ext):
@@ -87,6 +90,7 @@ class BuildExt(build_ext):
             ext.extra_compile_args = opts
             ext.extra_compile_args += extra_compile_args
             ext.extra_link_args = link_opts + extra_link_opts
+            # ext.extra_objects = [full_gomp_path]
         build_ext.build_extensions(self)
 
 if __name__ == "__main__":
@@ -102,7 +106,7 @@ if __name__ == "__main__":
         description='A python module for tokenizing biological sequences',
         long_description='',
         ext_modules=ext_modules,
-        install_requires=['pybind11', 'numpy>=0.19', 'einops', 'torch', 'fast_transformer_pytorch', 'linear_attention_transformer', 'product-key-memory', 'x-transformers', 'memcnn'],
+        install_requires=['pybind11', 'numpy>=0.19', 'einops', 'torch', 'fast_transformer_pytorch', 'x-transformers'],
         setup_requires=['pybind11'],
         cmdclass={'build_ext': BuildExt},
         zip_safe=False,
