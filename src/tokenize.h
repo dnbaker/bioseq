@@ -116,7 +116,7 @@ struct Tokenizer {
             x.resize(pos + 5);
         }
     }
-    py::object decode_tokens(const py::buffer_info& info) const {
+    py::object decode_tokens(const py::buffer_info& info, const bool trim=false) const {
         if(info.ptr == nullptr) {
             throw std::invalid_argument("Empty array cannot yield a decoded string");
         }
@@ -138,7 +138,7 @@ struct Tokenizer {
                 oss << it->second;
             }
             std::string ret = oss.str();
-            // trim_to_eos(ret);
+            if(trim) trim_to_eos(ret);
             return py::str(oss.str());
         }
         // ndim == 2
@@ -160,7 +160,7 @@ struct Tokenizer {
                 oss << it->second;
             }
             std::string next = oss.str();
-            // trim_to_eos(next);
+            if(trim) {trim_to_eos(ret);}
             ret.append(py::str(next));
         }
         return ret;
