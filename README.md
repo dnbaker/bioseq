@@ -31,6 +31,33 @@ and ~500x as fast as transformers.tokenizer.batch\_encode\_plus.
 
 Basically, you only want `batch_first=False` for LSTM training, and using CNNs will require a rearrange call due to the varying expectation of dimension ordering.
 
+## Decoding
+
+You can decode a sequence with a tokenizer.
+
+```python
+import bioseq
+tok = bioseq.pbeos_tokenizers['DNA'] # To add BOS, EOS, and PAD characters separately.
+tokens = tok.batch_tokenize(["ACGT", "GGGG"], padlen=7, batch_first=True)
+decoded = tok.decode_tokens(tokens)
+# decoded == ['<BOS>ACGT<EOS><PAD>', '<BOS>GGGG<EOS><PAD>']
+```
+
+It accepts 1D and 2D arrays. Be careful - if you don't have `batch_first` set, you may get the wrong outputs. You can fix this by swapping dimensions.
+
+And if you have a one-hot encoded array (or have logits), just use an argmax by dimension to convert batch to tokens for decoding.
+
+*Warning* (sharp edges):
+
+1. if you're using a reduced amino acid alphabet, each token represents several amino acids. We simply pick the lexicographically smallest as a representative.
+
+To the the full set of tokens for ambiguous tokens, use the `tokenizer.token_decoder()`.  `token_decoder()` returns a dictionary mapping integers to all possible characters.
+
+2. Consider ensuring padding gets its own character. `pbeos_tokenizers`, for instance, adds padding tokens as well as beginning/end of sequence tokens.
+
+Since sequences have different lengths, we have to pad to equal length for a batch. If `padding=True` on the `Tokenizer`, then we add padding tokens at the ends.
+One-hot encoding simply leaves them as 0s by default, but for tokens it's particularly important. For instance, in DNA, an empty padding is marked as a 0 and would then be marked as A. You pay slightly more (and use more tokens), but models learn the patterns of padding tokens at the end rather quickly, and you can avoid making mistakes.
+
 ## DataLoading
 We use a bioseq.FlatFile method, which provides random access to the sequences in a FAST{Q,A} file.
 This is then used by bioseq.FlatFileDataset for use with torch.utils.data.DataLoader.
@@ -54,3 +81,9 @@ pytorch (as torch) is also required
 Besides these, there are some python-only dependencies which setup.py should download for you.
 
 All of these can be manually installed via `python3 -m pip install -r requirements.txt`.
+
+## Version history
+
+v0.1.2: Dependencies made optional, token decoding added
+
+v0.1.1: Initial version
