@@ -13,6 +13,7 @@ struct Tokenizer {
     const bool zero_onehot_pad_;
     std::string key;
     std::unordered_map<int32_t, std::string> lookup;
+    std::unordered_map<int32_t, std::string> tokensets;
     std::string token_map_str;
     // Whether to pad with all 0s (instead of one-hot encoding with a wholly new character for 'padding')
     // If true, then trailing sections are left as all 0s
@@ -42,6 +43,7 @@ struct Tokenizer {
             if(!lookup.contains(value)) {
                 lookup[value] = std::string(1, static_cast<char>(i));
             }
+            tokensets[value] += static_cast<char>(i);
         }
         if(includes_bos()) {
             lookup[this->bos()] = "<BOS>";
@@ -60,6 +62,13 @@ struct Tokenizer {
             token_map_str.pop_back();
     }
     std::string token_map() const noexcept {return token_map_str;}
+    std::unordered_map<int32_t, py::bytes> token_set_map() const {
+        std::unordered_map<int32_t, py::bytes> ret;
+        for(const auto& [k, v]: tokensets) {
+            ret[k] = py::bytes(v);
+        }
+        return ret;
+    }
     Tokenizer(std::string key_, bool include_eos, bool include_bos, bool zohpad): include_eos_(include_eos), include_bos_(include_bos), zero_onehot_pad_(zohpad), key(key_) {
         std::transform(key.begin(), key.end(), key.begin(),[](auto x){return std::toupper(x);});
         auto it = CAMAP.find(key);
@@ -70,11 +79,14 @@ struct Tokenizer {
         }
         ca_ = it->second;
         const auto& ca = *ca_;
+        int32_t maxv{0};
         for(int32_t i = 0, e = ca.lut.size(); i < e; ++i) {
             const char value = ca.lut[i];
             if(!lookup.contains(value)) {
                 lookup[value] = std::string(1, static_cast<char>(i));
             }
+            tokensets[value] += static_cast<char>(i);
+            maxv = std::max(int(value), maxv);
         }
         if(includes_bos()) {
             lookup[this->bos()] = "<BOS>";
@@ -160,7 +172,7 @@ struct Tokenizer {
                 oss << it->second;
             }
             std::string next = oss.str();
-            if(trim) {trim_to_eos(ret);}
+            if(trim) {trim_to_eos(next);}
             ret.append(py::str(next));
         }
         return ret;

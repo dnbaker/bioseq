@@ -1,5 +1,8 @@
 #include "bioseq.h"
 #include "tokenize.h"
+#include <pybind11/stl.h>
+#include <pybind11/complex.h>
+#include <pybind11/chrono.h>
 
 inline __attribute__((always_inline))
 py::object tokenize(const Tokenizer &tok, const char *s, const py::ssize_t size, const py::ssize_t padlen, const std::string dt) {
@@ -43,15 +46,18 @@ void init_tokenize(py::module &m) {
             throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
         return ret;
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
-    .def("decode_tokens", [](const Tokenizer& tok, py::array array) {
+    .def("decode_tokens", [](const Tokenizer& tok, py::array array, bool trim) {
         return tok.decode_tokens_to_string(array);
-    })
+    }, py::arg("tokenizer"), py::arg("trim") = false)
     .def("lut", [](const Tokenizer& tok) {
         return tok.lookup;
     })
     .def("token_map", [](const Tokenizer& tok) {
         return tok.token_map();
     })
+    //std::vector<std::string> token_set() const noexcept {return tokenset_vector;}
+    //std::unordered_map<int32_t, std::string> token_set_map() const noexcept {return tokensets;}
+    .def("token_decoder", [](const Tokenizer& tok) {return tok.token_set_map();})
     .def("nchars", [](const Tokenizer& tok) {
         return tok.nchars();
     })
