@@ -84,6 +84,8 @@ All of these can be manually installed via `python3 -m pip install -r requiremen
 
 ## Version history
 
+v0.1.3: Bug fix - previous versions mapped Proline ("P") to Lysine ("K"), instead of mapping Pyrrolysine ("O") to "K".
+
 v0.1.2: Dependencies made optional, token decoding added
 
 v0.1.1: Initial version
