@@ -2,12 +2,11 @@
 #include <pybind11/pytypes.h>
 #include <pybind11/numpy.h>
 #include <zlib.h>
-#include "mio.hpp"
-#include "span.hpp"
-#include "kseq.h"
+#include "spoa/spoa.hpp"
 namespace py = pybind11;
 
-void init_fxstats(py::module &m) {
+void init_poa(py::module &m) {
+    
 #if 0
     py::class_<FlatFileIterator>(m, "FlatFileIterator")
     .def(py::init<FlatFileIterator>())
