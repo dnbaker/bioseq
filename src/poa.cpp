@@ -1,9 +1,46 @@
+#include <span>
+
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/numpy.h>
 #include <zlib.h>
 #include "spoa/spoa.hpp"
 namespace py = pybind11;
+
+using namespace spoa;
+
+static constexpr int32_t GLOBAL = 1;
+
+std::unique_ptr<spoa::AlignmentEngine> make_engine() {
+    return spoa::AlignmentEngine::Create( static_cast<spoa::AlignmentType>(GLOBAL), 5, -4, -8, -6, -10, -4);
+}
+
+struct SequenceGroup {
+    py::list sequences;
+    py::object qualities;
+    std::vector<int32_t> scores;
+    std::unique_ptr<spoa::Graph> graph;
+    SequenceGroup(py::list sequences, py::object qualities=py::none()): sequences{sequences}, qualities{qualities} {}
+    void build(spoa::AlignmentEngine* engine) {
+        graph = std::make_unique<Graph>();
+        /*
+        auto getQual = [&] () -> std::optional<std::span<uint8_t>> {
+            auto it = py::cast<py::iterator>(qualities);
+            if(!it.is_none()) {
+            }
+            return std::nullopt;
+        };
+        */
+        for(auto seq: sequences) {
+            int32_t score;
+            py::ssize_t size;
+            py::str str = py::cast<py::str>(seq);
+            const char *ptr = PyUnicode_AsUTF8AndSize(str.ptr(), &size);
+            const auto alignment = engine->Align(ptr, *graph, &score);
+            graph->AddAlignment(alignment, ptr);
+        }
+    }
+};
 
 void init_poa(py::module &m) {
     
