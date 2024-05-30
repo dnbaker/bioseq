@@ -93,10 +93,18 @@ class BuildExt(build_ext):
             # ext.extra_objects = [full_gomp_path]
         build_ext.build_extensions(self)
 
+
+def build_spoa():
+    import subprocess
+    import os
+    os.makedirs("spoa/build", exist_ok=True)
+    subprocess.check_call("cd spoa/build && cmake .. && cd .. && make", shell=True)
+
 if __name__ == "__main__":
-    __version__ = "0.1.7"
+    __version__ = "0.1.8"
+    build_spoa()
     include_dirs = [get_pybind_include(), get_pybind_include(True), "./", "spoa/include"]
-    ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/poa.cpp", "src/tokenize.cpp", "src/omp.cpp", 'src/fxstats.cpp'], include_dirs=include_dirs, language='c++')]
+    ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/poa.cpp", "src/tokenize.cpp", "src/omp.cpp", 'src/fxstats.cpp'], include_dirs=include_dirs, language='c++', extra_objects=["spoa/lib/libspoa.a"])]
     setup(
         name='bioseq',
         version=__version__,
