@@ -17,11 +17,16 @@ std::unique_ptr<spoa::AlignmentEngine> make_engine() {
 
 struct SequenceGroup {
     py::list sequences;
-    py::object qualities;
     std::vector<int32_t> scores;
+    std::string consensus;
     std::unique_ptr<spoa::Graph> graph;
-    SequenceGroup(py::list sequences, py::object qualities=py::none()): sequences{sequences}, qualities{qualities} {}
-    void build(spoa::AlignmentEngine* engine) {
+    SequenceGroup(py::list sequences): sequences{sequences} {}
+    void build(int min_coverage=-1, spoa::AlignmentEngine* engine=nullptr) {
+        if(min_coverage <= 0) {
+            min_coverage = std::max(py::size_t(0), (sequences.size() + 1) / 2);
+        }
+        std::unique_ptr<spoa::AlignmentEngine> localEngine(engine ? std::unique_ptr<spoa::AlignmentEngine>(): make_engine());
+        if(localEngine) engine = localEngine.get();
         graph = std::make_unique<Graph>();
         /*
         auto getQual = [&] () -> std::optional<std::span<uint8_t>> {
@@ -32,17 +37,23 @@ struct SequenceGroup {
         };
         */
         for(auto seq: sequences) {
-            int32_t score;
+            int32_t score{0};
             py::ssize_t size;
             py::str str = py::cast<py::str>(seq);
             const char *ptr = PyUnicode_AsUTF8AndSize(str.ptr(), &size);
+            scores.push_back(score);
             const auto alignment = engine->Align(ptr, *graph, &score);
             graph->AddAlignment(alignment, ptr);
         }
+        consensus = graph->GenerateConsensus(min_coverage);
     }
 };
 
 void init_poa(py::module &m) {
+    py::class_<SequenceGroup>(m, "SequenceGraph")
+    .def(py::init<py::list>())
+    .def("build", [](SequenceGroup& group, int minCov) {group.build(minCov);})
+    .def_property_readonly("sequence", [] (const SequenceGroup& group) -> std::string {return group.consensus;});
     
 #if 0
     py::class_<FlatFileIterator>(m, "FlatFileIterator")
