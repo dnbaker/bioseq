@@ -15,6 +15,12 @@ std::unique_ptr<spoa::AlignmentEngine> make_engine() {
     return spoa::AlignmentEngine::Create( static_cast<spoa::AlignmentType>(GLOBAL), 5, -4, -8, -6, -10, -4);
 }
 
+struct GraphRepr {
+    std::vector<char> seqs;
+    std::vector<std::vector<int32_t>> outEdges;
+    std::vector<std::vector<int32_t>> inEdges;
+};
+
 struct SequenceGroup {
     py::list sequences;
     std::vector<int32_t> scores;
@@ -46,6 +52,20 @@ struct SequenceGroup {
             graph->AddAlignment(alignment, ptr);
         }
         consensus = graph->GenerateConsensus(min_coverage);
+    }
+    GraphRepr GenerateGraph() {
+        GraphRepr ret;
+        std::vector<char> seqs;
+        std::unordered_map<Edge*, int32_t> edgeIdMap;
+        for(const auto& edge: graph->edges_) {
+            const int32_t id = edgeIdMap.size();
+            edgeIdMap.emplace(edge.get(), id);
+        }
+        for(auto& node: graph->nodes_) {
+            seqs.push_back(node->code);
+        }
+        ret.seqs = std::move(seqs);
+        return ret;
     }
 };
 
