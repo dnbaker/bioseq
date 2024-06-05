@@ -5,9 +5,13 @@
 #include <pybind11/numpy.h>
 #include <zlib.h>
 #include "spoa/spoa.hpp"
+#include "spoa/graph.hpp"
 namespace py = pybind11;
 
 using namespace spoa;
+using Edge = spoa::Graph::Edge;
+using Node = spoa::Graph::Node;
+
 
 static constexpr int32_t GLOBAL = 1;
 
@@ -16,20 +20,26 @@ std::unique_ptr<spoa::AlignmentEngine> make_engine() {
 }
 
 struct GraphRepr {
-    std::vector<char> seqs;
+    std::vector<char> bases;
+    std::vector<std::string> strings;
     std::vector<std::vector<int32_t>> outEdges;
     std::vector<std::vector<int32_t>> inEdges;
+    std::vector<std::vector<int32_t>> alignedNodes;
+    std::vector<spoa::Alignment> alignments;
+    std::string consensus;
 };
 
 struct SequenceGroup {
     py::list sequences;
     std::vector<int32_t> scores;
     std::string consensus;
+    std::vector<std::string> inputs;
+    std::vector<spoa::Alignment> alignments;
     std::unique_ptr<spoa::Graph> graph;
     SequenceGroup(py::list sequences): sequences{sequences} {}
     void build(int min_coverage=-1, spoa::AlignmentEngine* engine=nullptr) {
         if(min_coverage <= 0) {
-            min_coverage = std::max(py::size_t(0), (sequences.size() + 1) / 2);
+            min_coverage = std::max(py::size_t(0), (sequences.size() - 1) / 2);
         }
         std::unique_ptr<spoa::AlignmentEngine> localEngine(engine ? std::unique_ptr<spoa::AlignmentEngine>(): make_engine());
         if(localEngine) engine = localEngine.get();
@@ -48,23 +58,83 @@ struct SequenceGroup {
             py::str str = py::cast<py::str>(seq);
             const char *ptr = PyUnicode_AsUTF8AndSize(str.ptr(), &size);
             scores.push_back(score);
-            const auto alignment = engine->Align(ptr, *graph, &score);
+            inputs.emplace_back(ptr);
+            const auto alignment = engine->Align(inputs.back(), *graph, &score);
             graph->AddAlignment(alignment, ptr);
+            alignments.push_back(alignment);
         }
         consensus = graph->GenerateConsensus(min_coverage);
     }
-    GraphRepr GenerateGraph() {
-        GraphRepr ret;
-        std::vector<char> seqs;
+    py::dict GraphToPython() const {
+        using namespace pybind11::literals;
+        std::vector<char> bases;
         std::unordered_map<Edge*, int32_t> edgeIdMap;
-        for(const auto& edge: graph->edges_) {
+        std::unordered_map<Node*, int32_t> nodeIdMap;
+        std::vector<std::vector<int32_t>> edgeLabels;
+        std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
+        for(const auto& edge: graph->edges()) {
             const int32_t id = edgeIdMap.size();
             edgeIdMap.emplace(edge.get(), id);
         }
-        for(auto& node: graph->nodes_) {
-            seqs.push_back(node->code);
+        const auto& rankToNode = graph->rank_to_node();
+        int32_t nodeId{0};
+        const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
+        for(const auto& node: rankToNode) {
+            bases.push_back(node->code);
+            nodeIdMap.emplace(node, nodeId);
         }
-        ret.seqs = std::move(seqs);
+        const auto nodeToId = [&nodeIdMap](Node* const node) {return nodeIdMap.at(node);};
+        auto updateEdges = [&edges](const int32_t from, const int32_t to) {
+            const int32_t edgeId = edges.size();
+            edges.emplace((uint64_t(from) << 32) | to, edgeId);
+        };
+        for(const auto& edge: graph->edges()) {
+            updateEdges(nodeToId(edge->head), nodeToId(edge->tail));
+            edgeLabels.emplace_back(edge->labels.begin(), edge->labels.end()); // Note: these labels are in spoa order, not topological order.
+        }
+        // 1. Get the nodes out in topological order.
+        // 2. Get all edges out.
+        // 3. Annotate all edges with input support.
+        // 4. Annotate all nodes with input support.
+        // 5. Generate all supported paths through the graph.
+        // 6. Outside of this - bring in other data from the reads.
+        for(const auto& edge: graph->edges()) {
+        }
+        return py::dict("bases"_a=bases);
+    }
+    GraphRepr GenerateGraph() {
+        GraphRepr ret;
+        std::vector<char> bases;
+        std::unordered_map<Edge*, int32_t> edgeIdMap;
+        std::unordered_map<Node*, int32_t> nodeIdMap;
+        for(const auto& edge: graph->edges()) {
+            const int32_t id = edgeIdMap.size();
+            edgeIdMap.emplace(edge.get(), id);
+        }
+        const auto& rankToNode = graph->rank_to_node();
+        int32_t nodeId{0};
+        const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
+        for(const auto& node: rankToNode) {
+            bases.push_back(node->code);
+            nodeIdMap.emplace(node, nodeId);
+            std::vector<int32_t> outEdges;
+            std::transform(std::cbegin(node->outedges), std::cend(node->outedges), std::back_inserter(outEdges), edgeToId);
+            ret.outEdges.emplace_back(outEdges);
+
+            std::vector<int32_t> inEdges;
+            std::transform(std::cbegin(node->inedges), std::cend(node->inedges), std::back_inserter(inEdges), edgeToId);
+            ret.inEdges.emplace_back(inEdges);
+
+            std::vector<int32_t> alignedNodes;
+            std::transform(std::cbegin(node->aligned_nodes), std::cend(node->aligned_nodes), std::back_inserter(alignedNodes), [&nodeIdMap](const auto node) {return nodeIdMap.at(node);});
+            ret.alignedNodes.emplace_back(alignedNodes);
+            ++nodeId;
+        }
+        ret.bases = std::move(bases);
+        // copy the rest
+        ret.consensus = consensus;
+        ret.strings = inputs;
+        ret.alignments = alignments;
         return ret;
     }
 };
