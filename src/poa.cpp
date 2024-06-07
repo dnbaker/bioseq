@@ -71,6 +71,8 @@ struct SequenceGroup {
         std::unordered_map<Edge*, int32_t> edgeIdMap;
         std::unordered_map<Node*, int32_t> nodeIdMap;
         std::unordered_map<Node*, int32_t> nodeRankMap;
+        std::unordered_map<int32_t, std::unordered_set<int32_t>> seqIdToNodes;
+        std::unordered_map<int32_t, std::unordered_set<int32_t>> seqIdToEdges;
         std::vector<std::vector<int32_t>> edgeLabels;
         std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
         for(const auto& edge: graph->edges()) {
@@ -104,6 +106,13 @@ struct SequenceGroup {
         // 5. Generate all supported paths through the graph.
         // 6. Outside of this - bring in other data from the reads.
         for(const auto& edge: graph->edges()) {
+            Node* const source = edge->head;
+            Node* const sink = edge->tail;
+            for(const int32_t id: edge->labels) {
+                seqIdToNodes[id].insert(nodeIdMap.at(source));
+                seqIdToNodes[id].insert(nodeIdMap.at(sink));
+                seqIdToEdges[id].insert(edgeIdMap.at(edge.get()));
+            }
         }
         std::vector<int32_t> nodeRanks(nodeIdMap.size());
         for(const auto& [node, rank]: nodeRankMap) {
