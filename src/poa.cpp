@@ -70,6 +70,7 @@ struct SequenceGroup {
         std::vector<char> bases;
         std::unordered_map<Edge*, int32_t> edgeIdMap;
         std::unordered_map<Node*, int32_t> nodeIdMap;
+        std::unordered_map<Node*, int32_t> nodeRankMap;
         std::vector<std::vector<int32_t>> edgeLabels;
         std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
         for(const auto& edge: graph->edges()) {
@@ -81,7 +82,11 @@ struct SequenceGroup {
         const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
         for(const auto& node: rankToNode) {
             bases.push_back(node->code);
-            nodeIdMap.emplace(node, nodeId);
+            nodeRankMap.emplace(node, nodeId);
+        }
+        for(const auto& node: graph->nodes()) {
+            const int32_t id = nodeIdMap.size();
+            nodeIdMap.emplace(node.get(), id);
         }
         const auto nodeToId = [&nodeIdMap](Node* const node) {return nodeIdMap.at(node);};
         auto updateEdges = [&edges](const int32_t from, const int32_t to) {
@@ -90,7 +95,7 @@ struct SequenceGroup {
         };
         for(const auto& edge: graph->edges()) {
             updateEdges(nodeToId(edge->head), nodeToId(edge->tail));
-            edgeLabels.emplace_back(edge->labels.begin(), edge->labels.end()); // Note: these labels are in spoa order, not topological order.
+            edgeLabels.emplace_back(edge->labels.begin(), edge->labels.end());
         }
         // 1. Get the nodes out in topological order.
         // 2. Get all edges out.
@@ -100,7 +105,14 @@ struct SequenceGroup {
         // 6. Outside of this - bring in other data from the reads.
         for(const auto& edge: graph->edges()) {
         }
-        return py::dict("bases"_a=bases);
+        std::vector<int32_t> nodeRanks(nodeIdMap.size());
+        for(const auto& [node, rank]: nodeRankMap) {
+            nodeRanks[nodeIdMap.at(node)] = rank;
+        }
+        py::array_t<int32_t> nodeRanksPy({nodeRanks.size()});
+        int32_t* data = reinterpret_cast<int32_t *>(nodeRanksPy.request().ptr);
+        std::copy(nodeRanks.begin(), nodeRanks.end(), data);
+        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy);
     }
     GraphRepr GenerateGraph() {
         GraphRepr ret;
