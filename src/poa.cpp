@@ -1,4 +1,5 @@
 #include <span>
+#include <set>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
@@ -71,8 +72,8 @@ struct SequenceGroup {
         std::unordered_map<Edge*, int32_t> edgeIdMap;
         std::unordered_map<Node*, int32_t> nodeIdMap;
         std::unordered_map<Node*, int32_t> nodeRankMap;
-        std::unordered_map<int32_t, std::unordered_set<int32_t>> seqIdToNodes;
-        std::unordered_map<int32_t, std::unordered_set<int32_t>> seqIdToEdges;
+        std::unordered_map<int32_t, std::set<int32_t>> seqIdToNodes;
+        std::unordered_map<int32_t, std::set<int32_t>> seqIdToEdges;
         std::vector<std::vector<int32_t>> edgeLabels;
         std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
         for(const auto& edge: graph->edges()) {
@@ -121,7 +122,22 @@ struct SequenceGroup {
         py::array_t<int32_t> nodeRanksPy({nodeRanks.size()});
         int32_t* data = reinterpret_cast<int32_t *>(nodeRanksPy.request().ptr);
         std::copy(nodeRanks.begin(), nodeRanks.end(), data);
-        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy);
+
+        std::vector<int32_t> seqAlignments; // Packed sparse matrix
+        std::vector<int64_t> seqIndptr{{0}};
+        for(const auto& [seqId, nodes]: seqIdToNodes) {
+            const int64_t numNodes = nodes.size();
+            seqIndptr.push_back(numNodes + seqIndptr.back());
+            std::copy(nodes.begin(), nodes.end(), std::back_inserter(seqAlignments));
+        }
+
+        py::array_t<int32_t> seqAlignmentsPy({seqAlignments.size()});
+        std::copy(seqAlignments.begin(), seqAlignments.end(), reinterpret_cast<int32_t *>(seqAlignmentsPy.request().ptr));
+
+        py::array_t<int64_t> seqIndptrPy({seqIndptr.size()});
+        std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqAlignmentsPy.request().ptr));
+
+        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy);
     }
     GraphRepr GenerateGraph() {
         GraphRepr ret;
