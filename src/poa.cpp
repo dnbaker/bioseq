@@ -84,7 +84,6 @@ struct SequenceGroup {
             edgeIdMap.emplace(edge.get(), id);
         }
         const auto& rankToNode = graph->rank_to_node();
-        std::fprintf(stderr, "%zu ranks for %zu notes", rankToNode.size(), graph->nodes().size());
         int32_t nodeId{0};
         //const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
         for(const auto& node: rankToNode) {
@@ -122,7 +121,6 @@ struct SequenceGroup {
         }
         std::vector<int32_t> nodeRanks(nodeRankMap.size());
         for(const auto& [node, rank]: nodeRankMap) {
-            // std::fprintf(stderr, "Node %d has rank %d\n", nodeIdMap.at(node), rank);
             nodeRanks[nodeIdMap.at(node)] = rank;
         }
         py::array_t<int32_t> nodeRanksPy({std::ssize(nodeRanks)});
