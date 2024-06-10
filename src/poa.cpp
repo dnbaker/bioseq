@@ -74,7 +74,8 @@ struct SequenceGroup {
         std::unordered_map<Node*, int32_t> nodeRankMap;
         std::unordered_map<int32_t, std::set<int32_t>> seqIdToNodes;
         std::unordered_map<int32_t, std::set<int32_t>> seqIdToEdges;
-        std::vector<std::vector<int32_t>> edgeLabels;
+        std::vector<int32_t> edgeLabels;
+        std::vector<int64_t> edgeIndptr{{0}};
         std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
         for(const auto& edge: graph->edges()) {
             const int32_t id = edgeIdMap.size();
@@ -98,7 +99,8 @@ struct SequenceGroup {
         };
         for(const auto& edge: graph->edges()) {
             updateEdges(nodeToId(edge->head), nodeToId(edge->tail));
-            edgeLabels.emplace_back(edge->labels.begin(), edge->labels.end());
+            edgeIndptr.push_back(edgeIndptr.back() + edge->labels.size());
+            edgeLabels.insert(edgeLabels.end(), edge->labels.begin(), edge->labels.end());
         }
         // 1. Get the nodes out in topological order.
         // 2. Get all edges out.
@@ -137,7 +139,14 @@ struct SequenceGroup {
         py::array_t<int64_t> seqIndptrPy({seqIndptr.size()});
         std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqAlignmentsPy.request().ptr));
 
-        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy);
+        py::array_t<int32_t> edgeLabelsPy({edgeLabels.size()});
+        std::copy(edgeLabels.begin(), edgeLabels.end(), reinterpret_cast<int32_t *>(edgeLabelsPy.request().ptr));
+
+        py::array_t<int64_t> edgeIndptrPy({edgeIndptr.size()});
+        std::copy(edgeIndptr.begin(), edgeIndptr.end(), reinterpret_cast<int64_t *>(edgeLabelsPy.request().ptr));
+
+        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy,
+                        "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy);
     }
     GraphRepr GenerateGraph() {
         GraphRepr ret;
