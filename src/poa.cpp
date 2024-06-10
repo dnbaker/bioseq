@@ -121,7 +121,7 @@ struct SequenceGroup {
         for(const auto& [node, rank]: nodeRankMap) {
             nodeRanks[nodeIdMap.at(node)] = rank;
         }
-        py::array_t<int32_t> nodeRanksPy({nodeRanks.size()});
+        py::array_t<int32_t> nodeRanksPy({std::ssize(nodeRanks)});
         int32_t* data = reinterpret_cast<int32_t *>(nodeRanksPy.request().ptr);
         std::copy(nodeRanks.begin(), nodeRanks.end(), data);
 
@@ -133,13 +133,13 @@ struct SequenceGroup {
             std::copy(nodes.begin(), nodes.end(), std::back_inserter(seqAlignments));
         }
 
-        py::array_t<int32_t> seqAlignmentsPy({seqAlignments.size()});
+        py::array_t<int32_t> seqAlignmentsPy({std::ssize(seqAlignments)});
         std::copy(seqAlignments.begin(), seqAlignments.end(), reinterpret_cast<int32_t *>(seqAlignmentsPy.request().ptr));
 
         py::array_t<int64_t> seqIndptrPy({std::ssize(seqIndptr)});
         std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqAlignmentsPy.request().ptr));
 
-        py::array_t<int32_t> edgeLabelsPy({edgeLabels.size()});
+        py::array_t<int32_t> edgeLabelsPy({std::ssize(edgeLabels)});
         std::copy(edgeLabels.begin(), edgeLabels.end(), reinterpret_cast<int32_t *>(edgeLabelsPy.request().ptr));
 
         py::array_t<int64_t> edgeIndptrPy({std::ssize(edgeIndptr)});
@@ -154,7 +154,7 @@ struct SequenceGroup {
         }
 
         return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy,
-                        "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy, "matrix_coo"_a=matrixCOOPy);
+                        "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy, "matrix_coo"_a=matrixCOOPy, "consensus"_a=consensus, "input_sequences"_a=sequences);
     }
     GraphRepr GenerateGraph() {
         GraphRepr ret;
@@ -197,6 +197,7 @@ void init_poa(py::module &m) {
     py::class_<SequenceGroup>(m, "SequenceGraph")
     .def(py::init<py::list>())
     .def("build", [](SequenceGroup& group, int minCov) {group.build(minCov);})
+    .def("matrix", &SequenceGroup::GraphToPython)
     .def_property_readonly("sequence", [] (const SequenceGroup& group) -> std::string {return group.consensus;});
     
 #if 0
