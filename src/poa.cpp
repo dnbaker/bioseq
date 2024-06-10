@@ -68,7 +68,7 @@ struct SequenceGroup {
     }
     py::dict GraphToPython() const {
         using namespace pybind11::literals;
-        std::vector<char> bases;
+        std::string bases;
         std::unordered_map<Edge*, int32_t> edgeIdMap;
         std::unordered_map<Node*, int32_t> nodeIdMap;
         std::unordered_map<Node*, int32_t> nodeRankMap;
@@ -153,7 +153,7 @@ struct SequenceGroup {
             *destPtr++ = edge.second;
         }
 
-        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy,
+        return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignmentsPy, "seq_indptr"_a=seqIndptrPy,
                         "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy, "matrix_coo"_a=matrixCOOPy, "consensus"_a=consensus, "input_sequences"_a=sequences);
     }
     GraphRepr GenerateGraph() {
@@ -196,7 +196,7 @@ struct SequenceGroup {
 void init_poa(py::module &m) {
     py::class_<SequenceGroup>(m, "SequenceGraph")
     .def(py::init<py::list>())
-    .def("build", [](SequenceGroup& group, int minCov) {group.build(minCov);}, py::arg("seqlist"), py::arg("mincov") = py::none())
+    .def("build", [](SequenceGroup& group, int minCov) {group.build(minCov);}, py::arg("mincov") = -1)
     .def("matrix", &SequenceGroup::GraphToPython)
     .def_property_readonly("sequence", [] (const SequenceGroup& group) -> std::string {return group.consensus;});
 }
