@@ -75,18 +75,21 @@ struct SequenceGroup {
         std::unordered_map<int32_t, std::set<int32_t>> seqIdToNodes;
         std::unordered_map<int32_t, std::set<int32_t>> seqIdToEdges;
         std::vector<int32_t> edgeLabels;
-        std::vector<int64_t> edgeIndptr{{0}};
+        std::vector<int64_t> edgeIndptr;
+        edgeIndptr.push_back(0);
+
         std::unordered_map<uint64_t, int32_t> edges; // Map from (from, to): edge_id
         for(const auto& edge: graph->edges()) {
             const int32_t id = edgeIdMap.size();
             edgeIdMap.emplace(edge.get(), id);
         }
         const auto& rankToNode = graph->rank_to_node();
+        std::fprintf(stderr, "%zu ranks for %zu notes", rankToNode.size(), graph->nodes().size());
         int32_t nodeId{0};
         //const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
         for(const auto& node: rankToNode) {
             bases.push_back(node->code);
-            nodeRankMap.emplace(node, nodeId);
+            nodeRankMap.emplace(node, nodeId++);
         }
         for(const auto& node: graph->nodes()) {
             const int32_t id = nodeIdMap.size();
@@ -117,8 +120,9 @@ struct SequenceGroup {
                 seqIdToEdges[id].insert(edgeIdMap.at(edge.get()));
             }
         }
-        std::vector<int32_t> nodeRanks(nodeIdMap.size());
+        std::vector<int32_t> nodeRanks(nodeRankMap.size());
         for(const auto& [node, rank]: nodeRankMap) {
+            // std::fprintf(stderr, "Node %d has rank %d\n", nodeIdMap.at(node), rank);
             nodeRanks[nodeIdMap.at(node)] = rank;
         }
         py::array_t<int32_t> nodeRanksPy({std::ssize(nodeRanks)});
@@ -126,7 +130,10 @@ struct SequenceGroup {
         std::copy(nodeRanks.begin(), nodeRanks.end(), data);
 
         std::vector<int32_t> seqAlignments; // Packed sparse matrix
-        std::vector<int64_t> seqIndptr{{0}};
+
+        std::vector<int64_t> seqIndptr;
+        seqIndptr.push_back(0);
+
         for(const auto& [seqId, nodes]: seqIdToNodes) {
             const int64_t numNodes = nodes.size();
             seqIndptr.push_back(numNodes + seqIndptr.back());
@@ -137,13 +144,13 @@ struct SequenceGroup {
         std::copy(seqAlignments.begin(), seqAlignments.end(), reinterpret_cast<int32_t *>(seqAlignmentsPy.request().ptr));
 
         py::array_t<int64_t> seqIndptrPy({std::ssize(seqIndptr)});
-        std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqAlignmentsPy.request().ptr));
+        std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqIndptrPy.request().ptr));
 
         py::array_t<int32_t> edgeLabelsPy({std::ssize(edgeLabels)});
         std::copy(edgeLabels.begin(), edgeLabels.end(), reinterpret_cast<int32_t *>(edgeLabelsPy.request().ptr));
 
         py::array_t<int64_t> edgeIndptrPy({std::ssize(edgeIndptr)});
-        std::copy(edgeIndptr.begin(), edgeIndptr.end(), reinterpret_cast<int64_t *>(edgeLabelsPy.request().ptr));
+        std::copy(edgeIndptr.begin(), edgeIndptr.end(), reinterpret_cast<int64_t *>(edgeIndptrPy.request().ptr));
 
         py::array_t<int32_t> matrixCOOPy({std::ssize(edges) * 3});
         int32_t* destPtr = reinterpret_cast<int32_t *>(matrixCOOPy.request().ptr);
@@ -152,6 +159,9 @@ struct SequenceGroup {
             *destPtr++ = (edge.first << 32) >> 32;
             *destPtr++ = edge.second;
         }
+        matrixCOOPy = matrixCOOPy.reshape(std::vector<int64_t>{{edges.size(), 3}});
+
+        std::transform(std::cbegin(bases), std::cend(bases), std::begin(bases), [&](const char base) -> char {return graph->decoder(base);});
 
         return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignmentsPy, "seq_indptr"_a=seqIndptrPy,
                         "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy, "matrix_coo"_a=matrixCOOPy, "consensus"_a=consensus, "input_sequences"_a=sequences);
