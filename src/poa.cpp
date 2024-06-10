@@ -83,7 +83,7 @@ struct SequenceGroup {
         }
         const auto& rankToNode = graph->rank_to_node();
         int32_t nodeId{0};
-        const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
+        //const auto edgeToId = [&edgeIdMap](Edge* const edge) {return edgeIdMap.at(edge);};
         for(const auto& node: rankToNode) {
             bases.push_back(node->code);
             nodeRankMap.emplace(node, nodeId);
@@ -136,17 +136,25 @@ struct SequenceGroup {
         py::array_t<int32_t> seqAlignmentsPy({seqAlignments.size()});
         std::copy(seqAlignments.begin(), seqAlignments.end(), reinterpret_cast<int32_t *>(seqAlignmentsPy.request().ptr));
 
-        py::array_t<int64_t> seqIndptrPy({seqIndptr.size()});
+        py::array_t<int64_t> seqIndptrPy({std::ssize(seqIndptr)});
         std::copy(seqIndptr.begin(), seqIndptr.end(), reinterpret_cast<int64_t *>(seqAlignmentsPy.request().ptr));
 
         py::array_t<int32_t> edgeLabelsPy({edgeLabels.size()});
         std::copy(edgeLabels.begin(), edgeLabels.end(), reinterpret_cast<int32_t *>(edgeLabelsPy.request().ptr));
 
-        py::array_t<int64_t> edgeIndptrPy({edgeIndptr.size()});
+        py::array_t<int64_t> edgeIndptrPy({std::ssize(edgeIndptr)});
         std::copy(edgeIndptr.begin(), edgeIndptr.end(), reinterpret_cast<int64_t *>(edgeLabelsPy.request().ptr));
 
+        py::array_t<int32_t> matrixCOOPy({std::ssize(edges) * 3});
+        int32_t* destPtr = reinterpret_cast<int32_t *>(matrixCOOPy.request().ptr);
+        for(const auto& edge: edges) {
+            *destPtr++ = edge.first >> 32;
+            *destPtr++ = (edge.first << 32) >> 32;
+            *destPtr++ = edge.second;
+        }
+
         return py::dict("bases"_a=bases, "ranks"_a=nodeRanksPy, "seq_nodes"_a=seqAlignments, "seq_indptr"_a=seqIndptrPy,
-                        "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy);
+                        "edge_nodes"_a=edgeLabelsPy, "edge_indptr"_a=edgeIndptrPy, "matrix_coo"_a=matrixCOOPy);
     }
     GraphRepr GenerateGraph() {
         GraphRepr ret;
