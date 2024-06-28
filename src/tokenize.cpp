@@ -46,9 +46,9 @@ void init_tokenize(py::module &m) {
             throw std::invalid_argument(std::string("Unsupported dtype: ") + dt);
         return ret;
     }, py::arg("str"), py::arg("padlen") = 0, py::arg("destchar") = "B")
-    .def("decode_tokens", [](const Tokenizer& tok, py::array array, bool trim) {
+    .def("decode_tokens", [](const Tokenizer& tok, py::array array) {
         return tok.decode_tokens_to_string(array);
-    }, py::arg("tokenizer"), py::arg("trim") = false)
+    }, py::arg("tokenizer"))
     .def("lut", [](const Tokenizer& tok) {
         return tok.lookup;
     })

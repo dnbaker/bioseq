@@ -11,6 +11,7 @@ import bioseq.blosum as blosum
 import bioseq.lem as lem
 
 class FastxSeq:
+    trans = str.maketrans("U", "T")
     def __init__(self, x):
         self.seq = x.sequence
         self.name = x.name
@@ -23,6 +24,9 @@ class FastxSeq:
             return f"@{self.name}{comment}\n{self.seq}\n+\n{seq.qual}"
         else:
             return ">{self.name}{comment}\n{self.seq}"
+
+    def standardize(self):
+        str.translate(self.seq, self.trans)
 
 """
 bioseq provides tokenizers and utilities for generating embeddings
