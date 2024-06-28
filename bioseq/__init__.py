@@ -10,6 +10,20 @@ import bioseq.annotations as annotations
 import bioseq.blosum as blosum
 import bioseq.lem as lem
 
+class FastxSeq:
+    def __init__(self, x):
+        self.seq = x.sequence
+        self.name = x.name
+        self.comment = x.comment
+        self.qual = x.quality
+
+    def __str__(self):
+        comment = "" if not self.comment else " " + self.comment
+        if self.qual is not None:
+            return f"@{self.name}{comment}\n{self.seq}\n+\n{seq.qual}"
+        else:
+            return ">{self.name}{comment}\n{self.seq}"
+
 """
 bioseq provides tokenizers and utilities for generating embeddings
 See the list of existing tokenizers:
