@@ -37,6 +37,7 @@ struct SequenceGroup {
     std::vector<std::string> inputs;
     std::vector<spoa::Alignment> alignments;
     std::unique_ptr<spoa::Graph> graph;
+    bool isBuilt{false};
     SequenceGroup(py::list sequences): sequences{sequences} {}
     void build(int min_coverage=-1, spoa::AlignmentEngine* engine=nullptr) {
         if(min_coverage <= 0) {
@@ -65,8 +66,12 @@ struct SequenceGroup {
             alignments.push_back(alignment);
         }
         consensus = graph->GenerateConsensus(min_coverage);
+        isBuilt = true;
     }
-    py::dict GraphToPython() const {
+    py::dict GraphToPython() {
+        if(!isBuilt) {
+            build();
+        }
         using namespace pybind11::literals;
         std::string bases;
         std::unordered_map<Edge*, int32_t> edgeIdMap;
@@ -157,7 +162,7 @@ struct SequenceGroup {
             *destPtr++ = (edge.first << 32) >> 32;
             *destPtr++ = edge.second;
         }
-        matrixCOOPy = matrixCOOPy.reshape(std::vector<int64_t>{{edges.size(), 3}});
+        matrixCOOPy = matrixCOOPy.reshape(std::vector<int64_t>{{static_cast<int64_t>(edges.size()), 3}});
 
         std::transform(std::cbegin(bases), std::cend(bases), std::begin(bases), [&](const char base) -> char {return graph->decoder(base);});
 
