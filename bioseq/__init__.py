@@ -9,24 +9,27 @@ import bioseq.loaders as loaders
 import bioseq.annotations as annotations
 import bioseq.blosum as blosum
 import bioseq.lem as lem
+import bioseq.poa_util as poa_util
 
 class FastxSeq:
     trans = str.maketrans("U", "T")
-    def __init__(self, x):
+    def __init__(self, x, standardize=True):
         self.seq = x.sequence
         self.name = x.name
         self.comment = x.comment
         self.qual = x.quality
+        if standardize:
+            self.standardize()
 
     def __str__(self):
         comment = "" if not self.comment else " " + self.comment
         if self.qual is not None:
             return f"@{self.name}{comment}\n{self.seq}\n+\n{seq.qual}"
         else:
-            return ">{self.name}{comment}\n{self.seq}"
+            return f">{self.name}{comment}\n{self.seq}"
 
     def standardize(self):
-        str.translate(self.seq, self.trans)
+        self.seq = str.translate(self.seq, self.trans)
 
 """
 bioseq provides tokenizers and utilities for generating embeddings

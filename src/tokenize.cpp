@@ -65,7 +65,6 @@ void init_tokenize(py::module &m) {
     .def("batch_onehot_encode", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, int nthreads, py::object mask) -> py::object {
         switch(std::tolower(dt[0])) {
 #define C(x, t) case x: return tok.tokenize<t>(seq, padlen, false, nthreads, mask)
-            default:
                       C('b', int8_t);
                       C('B', uint8_t);
                       C('h', int16_t);
@@ -83,7 +82,6 @@ void init_tokenize(py::module &m) {
     .def("batch_tokenize", [](const Tokenizer &tok, py::sequence seq, py::ssize_t padlen, std::string dt, bool batch_first, int nthreads) -> py::object {
         switch(std::tolower(dt[0])) {
 #define C(x, t) case x: return tok.transencode<t>(seq, padlen, batch_first, nthreads)
-            default:
                       C('b', int8_t);
                       C('B', uint8_t);
                       C('h', int16_t);

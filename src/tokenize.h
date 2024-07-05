@@ -229,13 +229,11 @@ struct Tokenizer {
         const py::ssize_t batchsize = seqs.size();
         const py::ssize_t nc = full_alphabet_size();
         py::ssize_t nr = padlen; // + include_bos_ + include_eos_;
-        const auto mul = nc * nr;
         if(batch_first) {
             ret.resize({batchsize, nr, nc});
         } else {
             ret.resize({nr, batchsize, nc});
         }
-        const size_t total_nregs = nr * batchsize * nc;
         py::buffer_info bi = ret.request();
         T *ptr = (T *)bi.ptr, *offp = ptr;
         if(0) {
@@ -243,6 +241,7 @@ struct Tokenizer {
 #ifdef _OPENMP
     #pragma omp parallel for
 #endif
+        const auto mul = nc * nr;
             for(size_t i = 0; i < seqs.size(); ++i) {
                 const auto &seq(seqs[i]);
                 auto tp = &offp[i * mul];
@@ -259,6 +258,7 @@ struct Tokenizer {
             }
 #endif
         } else {
+        const size_t total_nregs = nr * batchsize * nc;
             for(size_t i = 0; i < seqs.size(); ++i) {
                 const auto &seq(seqs[i]);
                 if(include_bos_)
@@ -267,8 +267,8 @@ struct Tokenizer {
                     auto tr = ca_->translate(seq[i]);
                     assert(tr >= 0);
                     assert(tr < full_alphabet_size());
-                    assert(ptr + (include_bos_ + j) * nr * nc + i * nc + ca_->translate(seq[i]) < ptr + total_nregs);
-                    ptr[(include_bos_ + j) * nr * nc + i * nc + ca_->translate(seq[i])] = 1;
+                    assert(ptr + (include_bos_ + j) * nr * nc + i * nc + tr < ptr + total_nregs);
+                    ptr[(include_bos_ + j) * nr * nc + i * nc + tr] = 1;
                 }
                 if(include_eos_) {
                     ptr[(include_bos_ + seq.size()) * nr * nc + i * nc + eos()] = 1;
