@@ -10,6 +10,7 @@ import bioseq.annotations as annotations
 import bioseq.blosum as blosum
 import bioseq.lem as lem
 import bioseq.poa_util as poa_util
+import networkx as nx
 
 class FastxSeq:
     trans = str.maketrans("U", "T")
