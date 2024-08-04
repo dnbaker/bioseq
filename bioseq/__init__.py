@@ -4,59 +4,17 @@ from cbioseq import *
 #import bioseq.tax as tax
 #import bioseq.decoders as decoders
 #import bioseq.hattn as hattn
+import bioseq.poa_util as poa_util
 import bioseq.softmax as softmax
 import bioseq.loaders as loaders
 import bioseq.annotations as annotations
 import bioseq.blosum as blosum
 import bioseq.lem as lem
 import bioseq.poa_util as poa_util
-import networkx as nx
 
-class FastxSeq:
-    trans = str.maketrans("U", "T")
-    def __init__(self, x, standardize_nuc=False):
-        self.seq = x.sequence
-        self.name = x.name
-        self.comment = x.comment
-        self.qual = x.quality
-        if standardize_nuc:
-            self.standardize()
-
-    def __str__(self):
-        comment = "" if not self.comment else " " + self.comment
-        if self.qual is not None:
-            return f"@{self.name}{comment}\n{self.seq}\n+\n{seq.qual}"
-        else:
-            return f">{self.name}{comment}\n{self.seq}"
-
-    def standardize(self):
-        self.seq = str.translate(self.seq, self.trans)
+from bioseq.poa_util import FastxSeq, ExtractedPOAGraph
 
 
-class ExtractedPOAGraph:
-    def __init__(self, mat):
-        self.node_feats = list(mat['bases'])
-
-        edge_ip = mat['edge_indptr']
-        edge_supporting_seqs = mat['edge_nodes']
-        self.edge_seq_support = [edge_supporting_seqs[edge_ip[idx]:edge_ip[idx + 1]] for idx in range(len(edge_ip) - 1)]
-
-        seq_ip = mat['seq_indptr']
-        seq_supporting_nodes = mat['seq_nodes']
-        self.seq_node_support = [seq_supporting_nodes[seq_ip[idx]:seq_ip[idx + 1]] for idx in range(len(seq_ip) - 1)]
-
-        self.edge_coo = mat['matrix_coo'][:,:2]
-        self.mat = mat
-        self.ranks = mat['ranks']
-        graph = nx.DiGraph()
-        node_handles = [graph.add_node(x) for x in range(len(self.node_feats))]
-        for (x, y) in self.edge_coo:
-            graph.add_edge(x, y)
-        self.graph = graph
-
-
-    def __str__(self):
-        return f"feats: {self.node_feats}. Ranks: {self.ranks}. Edges: {self.edge_coo}. Graph:{self.graph}"
 
 """
 bioseq provides tokenizers and utilities for generating embeddings
