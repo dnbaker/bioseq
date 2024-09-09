@@ -53,7 +53,7 @@ class ExtractedPOAGraph:
 
 
 class POAEmbedder:
-    # TODO: add EOS/BOS support
+    # TODO: add EOS/BOS support, future enhancement.
     # Requires adding edges/nodes to nodes with no incident or excident edges, respectively.
     def __init__(self, tok, emb_dim=128):
         self.tok = tok
@@ -61,11 +61,15 @@ class POAEmbedder:
 
     # Takes the output of bioseq.SequenceGraph().matrix() and creates the data for GAT
     def embed_graph(self, mat):
+        x, data = self.to_x_data(mat)
+        return pyg.Data(x, data)
+
+    # Takes the output of bioseq.SequenceGraph().matrix() and creates the data for GAT
+    def to_x_data(self, mat):
         embedded = self.emb(torch.from_numpy(tok.batch_tokenize([mat['bases']], padlen=len(mat['bases'])).astype(np.int32)))
         x = embedded.view(-1, embedded.size(2))
-        coo = torch.from_numpy(mat['matrix_coo'][:,:2].astype(np.int32))
-        data = coo
-        return pyg.Data(x, data)
+        data = torch.from_numpy(mat['matrix_coo'][:,:2].astype(np.int32)) # COO
+        return (x, data)
 
 
 __all__ = ["ExtractedPOAGraph", "FastxSeq"]
