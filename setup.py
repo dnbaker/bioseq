@@ -45,7 +45,7 @@ def cpp_flag(compiler):
     raise RuntimeError('Unsupported compiler -- at least C++11 support '
                        'is needed!')
 
-#full_gomp_path = subprocess.check_output("realpath `$CXX --print-file-name=libgomp.a`", shell=True).decode('utf-8')
+full_gomp_path = subprocess.check_output("realpath `$CXX --print-file-name=libgomp.a`", shell=True).decode('utf-8').strip()
 
 extra_compile_args = ['-march=native',
                       '-Wno-char-subscripts', '-Wno-unused-function', '-Wno-ignored-qualifiers',
@@ -54,7 +54,7 @@ extra_compile_args = ['-march=native',
                       '-lz', '-fopenmp',
                       "-pipe", '-O0', '-DNDEBUG']
 
-extra_link_opts = ["-fopenmp", "-lz", "-lgomp"]
+extra_link_opts = ["-fopenmp", "-lz"]
 
 
 class BuildExt(build_ext):
@@ -90,7 +90,7 @@ class BuildExt(build_ext):
             ext.extra_compile_args = opts
             ext.extra_compile_args += extra_compile_args
             ext.extra_link_args = link_opts + extra_link_opts
-            # ext.extra_objects = [full_gomp_path]
+            ext.extra_objects = [full_gomp_path, "spoa/lib/libspoa.a"]
         build_ext.build_extensions(self)
 
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     __version__ = "0.1.8"
     build_spoa()
     include_dirs = [get_pybind_include(), get_pybind_include(True), "./", "spoa/include"]
-    ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/poa.cpp", "src/tokenize.cpp", "src/omp.cpp", 'src/fxstats.cpp'], include_dirs=include_dirs, language='c++', extra_objects=["spoa/lib/libspoa.a"])]
+    ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/poa.cpp", "src/tokenize.cpp", "src/omp.cpp", 'src/fxstats.cpp'], include_dirs=include_dirs, language='c++')]
     setup(
         name='bioseq',
         version=__version__,

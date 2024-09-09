@@ -1,9 +1,5 @@
 import cbioseq
 from cbioseq import *
-#from .tax import get_taxid
-#import bioseq.tax as tax
-#import bioseq.decoders as decoders
-#import bioseq.hattn as hattn
 import bioseq.poa_util as poa_util
 import bioseq.softmax as softmax
 import bioseq.loaders as loaders

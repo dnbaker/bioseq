@@ -162,7 +162,7 @@ struct SequenceGroup {
             *destPtr++ = (edge.first << 32) >> 32;
             *destPtr++ = edge.second;
         }
-        matrixCOOPy = matrixCOOPy.reshape(std::vector<int64_t>{{static_cast<int64_t>(edges.size()), 3}});
+        matrixCOOPy.resize(std::vector<int64_t>{{static_cast<int64_t>(edges.size()), 3}});
 
         std::transform(std::cbegin(bases), std::cend(bases), std::begin(bases), [&](const char base) -> char {return graph->decoder(base);});
 

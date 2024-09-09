@@ -1,6 +1,5 @@
 import networkx as nx
 import torch
-import pytorch_geometric as pyg
 
 class FastxSeq:
     trans = str.maketrans("U", "T")
@@ -61,6 +60,11 @@ class POAEmbedder:
 
     # Takes the output of bioseq.SequenceGraph().matrix() and creates the data for GAT
     def embed_graph(self, mat):
+        try:
+            import pytorch_geometric as pyg
+        except ImportError:
+            print("Cannot import pytorch_geometric")
+            raise
         x, data = self.to_x_data(mat)
         return pyg.Data(x, data)
 
