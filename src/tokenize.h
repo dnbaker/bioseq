@@ -200,10 +200,12 @@ struct Tokenizer {
         for(py::ssize_t i = 0; i < seqsz; ++i) {
             //, translated to %d\n", i, seq[i], seq[i], ca_->translate(seq[i]));
             assert(std::strlen(seq) > i);
-            auto offset = ca_->translate(seq[i]);
-            assert(offset < full_alphabet_size());
-            assert(offset >= 0u);
-            offp[offset] = 1, offp += nc;
+            // Characters the alphabet does not encode (translate == -1) leave an all-zero row, as in the
+            // batched path; previously this wrote offp[-1] (asserts are compiled out under -DNDEBUG).
+            const auto offset = ca_->translate(seq[i]);
+            assert(offset < static_cast<int>(full_alphabet_size()));
+            if(offset >= 0) offp[offset] = 1;
+            offp += nc;
         }
         if(include_eos_)
             offp[eos()] = 1, offp += nc;

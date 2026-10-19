@@ -101,9 +101,9 @@ def build_spoa():
     subprocess.check_call("cd spoa/build && cmake .. && cd .. && make", shell=True)
 
 if __name__ == "__main__":
-    __version__ = "0.1.8"
+    __version__ = "0.1.9"
     build_spoa()
-    include_dirs = [get_pybind_include(), get_pybind_include(True), "./", "spoa/include"]
+    include_dirs = [get_pybind_include(), get_pybind_include(True), "./", "spoa/include", "bonsai/include"]
     ext_modules = [Extension("cbioseq", ["src/bioseq.cpp", "src/poa.cpp", "src/tokenize.cpp", "src/omp.cpp", 'src/fxstats.cpp'], include_dirs=include_dirs, language='c++')]
     setup(
         name='bioseq',
